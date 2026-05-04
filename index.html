@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>O Preço da Guerra — Do Estreito de Ormuz à tua bomba de gasolina</title>
+  <meta name="description" content="Como uma faixa de mar a 5000 km chega à bomba de gasolina em Portugal. Visualização do impacto económico da crise do Estreito de Ormuz (Fev 2026).">
+  <meta name="author" content="Luis Miguel Pereira Silva (PG60390) — Universidade do Minho">
+
+  <!-- Open Graph / partilha em redes sociais -->
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="pt_PT">
+  <meta property="og:title" content="O Preço da Guerra — Do Estreito de Ormuz à tua bomba de gasolina">
+  <meta property="og:description" content="Como a crise no Médio Oriente chega à bomba de gasolina em Portugal — visualização editorial em D3.js">
+  <meta property="og:site_name" content="SVDC · Universidade do Minho">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#0a0e14">
+
+  <!-- Favicon SVG inline (gota de petróleo a arder, espelha o tema âmbar) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><radialGradient id='g' cx='50%25' cy='65%25' r='55%25'><stop offset='0%25' stop-color='%23f5b95a'/><stop offset='60%25' stop-color='%23e89c3f'/><stop offset='100%25' stop-color='%23c44536'/></radialGradient></defs><path d='M16 3 C 9 13, 6 18, 6 22 a 10 10 0 0 0 20 0 c 0 -4 -3 -9 -10 -19 z' fill='url(%23g)'/></svg>">
+
+  <!-- Fontes editoriais (Fraunces para display, Newsreader para corpo, JetBrains Mono para dados) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,700;9..144,900&family=Newsreader:ital,wght@0,300;0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ===== Barra de status ao vivo (fixa no topo) ===== -->
+  <div class="livebar" id="livebar">
+    <div class="livebar__pulse" aria-hidden="true"></div>
+    <span class="livebar__label">Dados ao vivo</span>
+    <span class="livebar__sep">·</span>
+    <span class="livebar__sources" id="livebar-sources">a carregar…</span>
+    <span class="livebar__sep livebar__sep--right">·</span>
+    <span class="livebar__time" id="livebar-time">—</span>
+  </div>
+
+  <!-- =====================================================
+       SECÇÃO 0 — Hero / Capa
+       ===================================================== -->
+  <header class="hero">
+    <div class="hero__top">
+      <span class="hero__kicker">Visualização de Dados · Maio 2026</span>
+      <span class="hero__byline">Luis Miguel Pereira Silva · PG60390</span>
+    </div>
+
+    <div class="hero__content">
+      <h1 class="hero__title">
+        <span class="hero__title-l1">O preço</span>
+        <span class="hero__title-l2">da guerra</span>
+      </h1>
+      <p class="hero__lede">
+        Como uma faixa de mar a <em>cinco mil quilómetros</em>
+        de Braga chega à tua bomba de gasolina.
+      </p>
+    </div>
+
+    <div class="hero__numbers">
+      <div class="stat">
+        <div class="stat__value" data-count-to="54" data-suffix="%" data-prefix="+">+0%</div>
+        <div class="stat__label">Brent crude — média Mar–Abr vs pré-guerra</div>
+      </div>
+      <div class="stat">
+        <div class="stat__value" data-count-to="0.39" data-decimals="2" data-prefix="+€" data-suffix="/L">+€0,00/L</div>
+        <div class="stat__label">Gasóleo em Portugal (€1,57 → €1,96)</div>
+      </div>
+      <div class="stat">
+        <div class="stat__value" data-count-to="20" data-suffix="%">0%</div>
+        <div class="stat__label">do petróleo mundial passa pelo Estreito de Ormuz</div>
+      </div>
+    </div>
+
+    <div class="hero__scroll-hint">
+      <span>Continua a ler</span>
+      <svg class="hero__scroll-arrow" viewBox="0 0 12 18" width="12" height="18" aria-hidden="true">
+        <path d="M6 1 L6 16 M1 11 L6 16 L11 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </header>
+
+  <!-- =====================================================
+       SECÇÃO 1 — Onde tudo começa (Mapa do Estreito)
+       ===================================================== -->
+  <section class="chapter chapter--map" id="cap1">
+    <div class="chapter__intro">
+      <span class="chapter__number">I</span>
+      <h2 class="chapter__title">Onde tudo começa</h2>
+      <p class="chapter__lede">
+        O <strong>Estreito de Ormuz</strong> tem 33 quilómetros de largura no
+        ponto mais apertado. Por aqui passam, todos os dias, <strong>20,9 milhões
+        de barris de petróleo</strong>. É um quinto do consumo mundial — a
+        passar por uma faixa de água mais estreita que a distância entre Braga e
+        Guimarães.
+      </p>
+    </div>
+
+    <!-- Container do mapa SVG (preenchido por D3) -->
+    <figure class="viz viz--map">
+      <div id="map-world"></div>
+      <figcaption class="viz__caption">
+        Volume diário de petróleo (milhões de barris/dia, 1.º semestre 2025) nos
+        principais pontos de estrangulamento marítimos.
+        <span class="viz__source">Fonte: U.S. Energy Information Administration, 2026.</span>
+      </figcaption>
+    </figure>
+
+    <div class="chapter__pull-quote">
+      &ldquo;Se o Estreito de Ormuz fechar, a alternativa mais próxima é
+      <strong>contornar África pelo Cabo da Boa Esperança</strong> — mais
+      15 dias de viagem.&rdquo;
+    </div>
+  </section>
+
+  <!-- =====================================================
+       SECÇÃO 2 — A guerra reescreve as rotas
+       ===================================================== -->
+  <section class="chapter" id="cap2">
+    <div class="chapter__intro">
+      <span class="chapter__number">II</span>
+      <h2 class="chapter__title">A guerra reescreve as rotas</h2>
+      <p class="chapter__lede">
+        A 28 de fevereiro de 2026, EUA e Israel lançaram <strong>quase 900
+        ataques em 12 horas</strong> contra alvos iranianos. O Irão respondeu
+        com mísseis e o encerramento parcial do Estreito. Os armadores
+        começaram a desviar navios para o Cabo da Boa Esperança.
+      </p>
+    </div>
+
+    <figure class="viz">
+      <div id="chart-flows"></div>
+      <figcaption class="viz__caption">
+        Volume de petróleo transportado por rota, 2020–2025.
+        Repara como o <strong>Bab el-Mandeb</strong> (Mar Vermelho) já tinha
+        colapsado em 2024 com os ataques Houthi — e como o
+        <strong>Cabo da Boa Esperança</strong> absorveu o desvio.
+        <span class="viz__source">Fonte: U.S. Energy Information Administration.</span>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- =====================================================
+       SECÇÃO 3 — Para onde vai esse petróleo
+       ===================================================== -->
+  <section class="chapter" id="cap3">
+    <div class="chapter__intro">
+      <span class="chapter__number">III</span>
+      <h2 class="chapter__title">Para onde vai esse petróleo</h2>
+      <p class="chapter__lede">
+        <strong>89%</strong> do petróleo que sai pelo Estreito vai para a Ásia.
+        Mas o preço fixa-se globalmente — quando o Brent sobe em Singapura,
+        sobe também em Sines.
+      </p>
+    </div>
+
+    <figure class="viz">
+      <div id="chart-destinations"></div>
+      <figcaption class="viz__caption">
+        Destinos do petróleo que transita o Estreito de Ormuz, 1.º semestre 2025.
+        A largura de cada fluxo é proporcional à quota de mercado.
+        <span class="viz__source">Fonte: U.S. Energy Information Administration (Mar 2026).</span>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- =====================================================
+       SECÇÃO 4 — Aterragem em Portugal
+       ===================================================== -->
+  <section class="chapter chapter--portugal" id="cap4">
+    <div class="chapter__intro">
+      <span class="chapter__number">IV</span>
+      <h2 class="chapter__title">Aterragem em Portugal</h2>
+      <p class="chapter__lede">
+        A 23 de fevereiro &mdash; cinco dias antes da guerra começar &mdash;
+        o gasóleo custava <strong>1,60 €/litro</strong> em Portugal.
+        A 6 de abril, atingiu <strong>2,13 €/litro</strong>.
+        Quem enche um depósito de 50L paga hoje
+        <strong>mais 26 € por enchimento</strong>.
+      </p>
+    </div>
+
+    <figure class="viz viz--wide">
+      <div id="chart-prices"></div>
+      <figcaption class="viz__caption">
+        Preço do petróleo Brent (linha laranja) e do gasóleo simples em Portugal
+        (linha clara), com a data do início da guerra marcada.
+        <span class="viz__source">Fontes: FRED (Brent), DGEG (combustíveis PT).</span>
+      </figcaption>
+    </figure>
+
+    <!-- Pequenos múltiplos com inflação por classe -->
+    <figure class="viz viz--wide">
+      <div id="chart-inflation"></div>
+      <figcaption class="viz__caption">
+        Taxa de variação anual do IPC em Portugal por classe de despesa, 2000–2025.
+        A classe <strong>Transportes</strong> está realçada — é a mais sensível ao preço do petróleo.
+        Linhas verticais marcam a crise de 2008, a invasão da Ucrânia (2022) e a guerra Irão–EUA (2026).
+        <span class="viz__source">Fonte: PORDATA / INE.</span>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- =====================================================
+       SECÇÃO 5 — E para ti, especificamente
+       ===================================================== -->
+  <section class="chapter chapter--calc" id="cap5">
+    <div class="chapter__intro">
+      <span class="chapter__number">V</span>
+      <h2 class="chapter__title">E para ti, quanto custa?</h2>
+      <p class="chapter__lede">
+        Os números globais são abstratos. Os teus, não.
+      </p>
+    </div>
+
+    <div class="calculator" id="calculator">
+      <div class="calculator__inputs">
+        <label class="input-group">
+          <span class="input-group__label">Quantos km conduzes por mês?</span>
+          <input type="range" id="km-slider" min="0" max="3000" step="50" value="1000">
+          <output class="input-group__output" id="km-output">1000 km</output>
+        </label>
+
+        <label class="input-group">
+          <span class="input-group__label">Combustível</span>
+          <select id="fuel-select">
+            <option value="gasoleo" selected>Gasóleo</option>
+            <option value="gasolina">Gasolina 95</option>
+          </select>
+        </label>
+
+        <label class="input-group">
+          <span class="input-group__label">Consumo médio (L/100km)</span>
+          <input type="number" id="consumption" min="3" max="20" step="0.1" value="6.5">
+        </label>
+      </div>
+
+      <div class="calculator__result">
+        <div class="calculator__result-label">Pagas a mais por mês</div>
+        <div class="calculator__result-value" id="extra-cost">— €</div>
+        <div class="calculator__result-explainer" id="extra-explain">
+          Comparado com os preços de Janeiro de 2026
+        </div>
+      </div>
+    </div>
+
+    <p class="chapter__outro">
+      Esta foi a viagem: do Estreito de Ormuz até à tua bomba de gasolina.
+      Cinco mil quilómetros, dois meses, quase um euro a mais por cada
+      enchimento. <strong>Os mapas mudaram. Os preços também.</strong>
+    </p>
+  </section>
+
+  <!-- =====================================================
+       Rodapé
+       ===================================================== -->
+  <footer class="footer">
+    <div class="footer__sources">
+      <h3>Fontes dos dados</h3>
+      <ul>
+        <li><strong>Estreito de Ormuz e chokepoints globais:</strong>
+          U.S. Energy Information Administration, World Oil Transit Chokepoints (Mar 2026)</li>
+        <li><strong>Preço do petróleo Brent:</strong>
+          Federal Reserve Bank of St. Louis, FRED (DCOILBRENTEU) — fetch ao vivo com fallback CSV</li>
+        <li><strong>Preços de combustíveis em Portugal:</strong>
+          Direção-Geral de Energia e Geologia (DGEG), Histórico UE</li>
+        <li><strong>Inflação:</strong> PORDATA / INE</li>
+        <li><strong>Turismo:</strong> Turismo de Portugal, Permanência de Hóspedes (NUTS 2024)</li>
+        <li><strong>Mapa-mundo:</strong> Natural Earth via world-atlas TopoJSON</li>
+      </ul>
+    </div>
+    <div class="footer__meta">
+      <p>Sistemas de Visualização de Dados e Conhecimento · Universidade do Minho · Maio 2026</p>
+      <p>Mestrado em Inteligência Artificial · Luis Miguel Pereira Silva (PG60390)</p>
+      <p>Construído com D3.js v7</p>
+    </div>
+  </footer>
+
+  <!-- D3.js v7 + topojson + d3-sankey -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3"></script>
+  <script src="js/api.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
