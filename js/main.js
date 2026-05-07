@@ -61,48 +61,34 @@ const hideTooltip = () => tooltip.style('opacity', 0);
 /* ---------- 1b. GESTOR DA BARRA "AO VIVO" ---------- */
 
 window.LiveStatus = (() => {
-  // nome → { source: string, live: boolean }
-  const sources = new Map();
-  const bar     = document.getElementById('livebar');
-  const elSrc   = document.getElementById('livebar-sources');
-  const elTime  = document.getElementById('livebar-time');
+  const bar    = document.getElementById('livebar');
+  const elSrc  = document.getElementById('livebar-sources');
+  const elTime = document.getElementById('livebar-time');
 
-  function render() {
-    if (!elSrc) return;
-    const parts = [];
-    let anyFallback = false;
-    for (const [name, info] of sources) {
-      // 🟢 = fonte ao vivo / canónica · ⚪ = fallback CSV local
-      const dot = info.live ? '🟢' : '⚪';
-      if (!info.live) anyFallback = true;
-      parts.push(`${name}: ${dot} ${info.source}`);
-    }
-    elSrc.textContent = parts.join('  ·  ');
-    elTime.textContent = new Date().toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'});
-    bar.classList.remove('livebar--loading');
-    bar.classList.toggle('livebar--error', anyFallback && sources.size > 0);
+  // Versão minimalista: a barra mostra apenas "DADOS AO VIVO · hora".
+  // Mantém-se a chamada LiveStatus.report() por compatibilidade — é no-op
+  // do ponto de vista visual, mas continua a tirar o estado de loading e
+  // a actualizar o relógio.
+  if (elSrc) elSrc.style.display = 'none';
+  // O segundo separador tem margin-left:auto e empurra a hora para a direita.
+  // Mantemos o nó (para preservar o layout) mas esvaziamos o caracter "·".
+  const sepRight = bar?.querySelector('.livebar__sep--right');
+  if (sepRight) sepRight.textContent = '';
+
+  function updateTime() {
+    if (!elTime) return;
+    elTime.textContent = new Date().toLocaleTimeString('pt-PT',
+      { hour: '2-digit', minute: '2-digit' });
   }
 
   return {
     start() {
-      bar.classList.add('livebar--loading');
-      elSrc.textContent = 'a contactar fontes ao vivo…';
+      bar?.classList.add('livebar--loading');
+      updateTime();
     },
-    // Aceita (name, source) — string ou {data, source, live} — para retro-compatibilidade
-    report(name, sourceOrResult, liveFlag) {
-      let info;
-      if (sourceOrResult && typeof sourceOrResult === 'object' && 'source' in sourceOrResult) {
-        info = { source: sourceOrResult.source, live: !!sourceOrResult.live };
-      } else {
-        // Heurística para chamadas antigas só com string
-        const src = String(sourceOrResult || '');
-        const live = liveFlag !== undefined
-          ? !!liveFlag
-          : (src.includes('ao vivo') && !src.toLowerCase().includes('fallback'));
-        info = { source: src, live };
-      }
-      sources.set(name, info);
-      render();
+    report() {
+      bar?.classList.remove('livebar--loading');
+      updateTime();
     }
   };
 })();
@@ -416,8 +402,11 @@ async function drawDestinations() {
   };
 
   // Carregar dados
+  // NOTA: quando o destino tem o mesmo nome da região (caso "Europa,Europa"),
+  // o Sankey cria um link region→country que é um self-loop e d3-sankey@0.12
+  // não suporta ciclos — sufixamos o destino para garantir que é um nó distinto.
   const raw = await d3.csv('data/processed/hormuz_destinations.csv', d => ({
-    destination: d.destination,
+    destination: d.destination === d.region ? `${d.destination} (UE)` : d.destination,
     region: d.region,
     share: +d.share_percent,
     note: d.note
