@@ -3,7 +3,7 @@
 Visualização de dados sobre o impacto económico da guerra Irão–EUA (Fev 2026)
 em Portugal — do Estreito de Ormuz à bomba de gasolina.
 
-**Autor:** Luis Miguel Pereira Silva (PG60390) ·
+**Autores:** Luis Miguel Pereira Silva (PG60390) · Guilherme Lobo Pinto (PG60225) ·
 Mestrado em Inteligência Artificial · Universidade do Minho ·
 Sistemas de Visualização de Dados e Conhecimento · Maio 2026
 
@@ -28,41 +28,42 @@ Instalar a extensão *Live Server* e clicar em "Go Live" no `index.html`.
 
 ## 🟢 Dados ao vivo (APIs)
 
-A página tenta sempre carregar dados em tempo real. Há uma barra fixa no topo
-que indica o estado de cada fonte:
+A página puxa dados em tempo real e usa **a mesma fonte** para o histórico
+e para o valor atual de cada série — assim os gráficos e a calculadora são
+coerentes (mesma metodologia para o passado e para hoje). Há uma barra fixa
+no topo que indica o estado de cada fonte:
 
 | Símbolo | Significado |
 |---------|-------------|
-| 🟢 | Carregado da API ao vivo |
-| ⚪ | A usar CSV local (API falhou ou está sem chave) |
+| 🟢 | Fonte ao vivo / canónica acessível |
+| ⚪ | A usar CSV local (a fonte ao vivo falhou) |
 
-### APIs usadas
+### Fontes (1.ª escolha em cima, fallback em baixo)
 
-1. **Brent crude (FRED)** — não precisa de chave. Vai sempre via proxy CORS
-   porque o FRED não suporta CORS diretamente.
-2. **Brent confirmação (EIA v2)** — precisa de chave grátis em
-   https://www.eia.gov/opendata/register.php (registo de 1 minuto).
-3. **Inflação (INE Portugal)** — não precisa de chave. Pode ir direto ou
-   via proxy dependendo do dia.
-4. **Combustíveis (DGEG)** — sem API pública. Continua a usar o CSV
-   atualizado manualmente.
+| Dataset | Primária | Fallback | Notas |
+|---------|----------|----------|-------|
+| **Brent diário** | [Stooq.com CSV (`CB.F`)](https://stooq.com/q/d/?s=cb.f) | FRED → CSV local | ~30 anos de daily closes, mesma série usada para o histórico e o último ponto |
+| **Combustíveis PT** | [maisgasolina.com](https://www.maisgasolina.com/estatisticas-dos-combustiveis/) (HTML scrape) | DGEG CSV local | Médias semanais; gasóleo + gasolina 95 |
+| **Inflação** | [PORDATA / INE](https://www.pordata.pt/) (CSV local) | — | Série anual oficial; INE só publica uma vez por ano |
+| **Chokepoints** | [EIA — World Oil Transit Chokepoints](https://www.eia.gov/international/analysis/special-topics/World_Oil_Transit_Chokepoints) | — | Anual, congelado em CSV |
 
-### Configurar a chave EIA
+### Proxy CORS
 
-Abrir `js/api.js`, linha ~22:
+Stooq, FRED e maisgasolina não emitem cabeçalhos CORS. O ficheiro
+`js/api.js` tem uma cadeia de proxies públicos que são tentados por ordem
+até obter resposta válida (`api.allorigins.win`, `corsproxy.io`,
+`thingproxy`). Se todos falharem, cai automaticamente para o CSV local.
+**Nenhuma chave de API é necessária.**
 
-```js
-EIA_API_KEY: 'COLOCA_AQUI_A_TUA_CHAVE_EIA',
-```
+### Cache
 
-Substituir pela tua chave. Ficheiro está no `.gitignore`? **Não** — está no
-código público. Para uso académico tudo bem; se quiseres ser rigoroso, mete
-a chave no `.gitignore` ou usa um backend.
+Os pedidos ao vivo ficam em `sessionStorage` durante 1 hora — abrir a página
+várias vezes seguidas não martela os proxies.
 
-### O que fazer se a API falhar na apresentação
+### O que fazer se uma API falhar na apresentação
 
-Nada. Os CSVs locais ficam como fallback automático. A página continua a
-mostrar tudo, só fica ⚪ em vez de 🟢. **Nunca rebenta.**
+Nada. Os CSVs locais (`data/processed/`) ficam como fallback automático.
+A página continua a mostrar tudo, só fica ⚪ em vez de 🟢. **Nunca rebenta.**
 
 ## 📂 Estrutura
 
@@ -146,14 +147,14 @@ Depois é só partilhar o URL `https://<utilizador>.github.io/SVDC3/`.
 
 ## 📚 Fontes dos dados
 
-| Dataset | Fonte | Atualização |
-|---------|-------|-------------|
-| Brent diário | FRED — Federal Reserve Bank of St. Louis | Diária |
-| Combustíveis PT | DGEG — Direção-Geral de Energia e Geologia | Semanal |
-| Inflação | PORDATA / INE | Mensal |
-| Turismo | Turismo de Portugal — TravelBI | Mensal |
-| Chokepoints | EIA — U.S. Energy Information Administration | Anual |
-| Mapa-mundo | Natural Earth via world-atlas TopoJSON | — |
+| Dataset | Fonte primária (ao vivo) | Fallback | Atualização |
+|---------|--------------------------|----------|-------------|
+| Brent diário | Stooq.com (`CB.F`) | FRED → CSV local | Diária |
+| Combustíveis PT | maisgasolina.com | DGEG CSV local | Semanal |
+| Inflação | PORDATA / INE (CSV) | — | Anual |
+| Turismo | Turismo de Portugal — TravelBI | — | Mensal |
+| Chokepoints | EIA — U.S. Energy Information Administration | — | Anual |
+| Mapa-mundo | Natural Earth via world-atlas TopoJSON | — | — |
 
 ## 🏗️ Tecnologia
 

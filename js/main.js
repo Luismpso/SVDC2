@@ -61,7 +61,8 @@ const hideTooltip = () => tooltip.style('opacity', 0);
 /* ---------- 1b. GESTOR DA BARRA "AO VIVO" ---------- */
 
 window.LiveStatus = (() => {
-  const sources = new Map();   // nome do dataset → string descritiva da fonte
+  // nome → { source: string, live: boolean }
+  const sources = new Map();
   const bar     = document.getElementById('livebar');
   const elSrc   = document.getElementById('livebar-sources');
   const elTime  = document.getElementById('livebar-time');
@@ -69,26 +70,38 @@ window.LiveStatus = (() => {
   function render() {
     if (!elSrc) return;
     const parts = [];
-    let anyError = false;
-    for (const [name, src] of sources) {
-      const live = src.includes('ao vivo');
-      const local = src.includes('local') || src.includes('CSV');
-      if (local) anyError = true;
-      parts.push(`${name}: ${live ? '🟢' : (local ? '⚪' : '🟡')} ${src}`);
+    let anyFallback = false;
+    for (const [name, info] of sources) {
+      // 🟢 = fonte ao vivo / canónica · ⚪ = fallback CSV local
+      const dot = info.live ? '🟢' : '⚪';
+      if (!info.live) anyFallback = true;
+      parts.push(`${name}: ${dot} ${info.source}`);
     }
     elSrc.textContent = parts.join('  ·  ');
     elTime.textContent = new Date().toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'});
     bar.classList.remove('livebar--loading');
-    bar.classList.toggle('livebar--error', anyError && sources.size > 0);
+    bar.classList.toggle('livebar--error', anyFallback && sources.size > 0);
   }
 
   return {
     start() {
       bar.classList.add('livebar--loading');
-      elSrc.textContent = 'a contactar APIs…';
+      elSrc.textContent = 'a contactar fontes ao vivo…';
     },
-    report(name, source) {
-      sources.set(name, source);
+    // Aceita (name, source) — string ou {data, source, live} — para retro-compatibilidade
+    report(name, sourceOrResult, liveFlag) {
+      let info;
+      if (sourceOrResult && typeof sourceOrResult === 'object' && 'source' in sourceOrResult) {
+        info = { source: sourceOrResult.source, live: !!sourceOrResult.live };
+      } else {
+        // Heurística para chamadas antigas só com string
+        const src = String(sourceOrResult || '');
+        const live = liveFlag !== undefined
+          ? !!liveFlag
+          : (src.includes('ao vivo') && !src.toLowerCase().includes('fallback'));
+        info = { source: src, live };
+      }
+      sources.set(name, info);
       render();
     }
   };
@@ -570,18 +583,18 @@ async function drawPrices() {
     .attr('viewBox', `0 0 ${width} ${height}`)
     .attr('preserveAspectRatio', 'xMidYMid meet');
 
-  // Carregar dados — Brent ao vivo (FRED) + combustíveis (DGEG CSV local)
+  // Carregar dados via LiveData (mesma fonte para histórico e atual de cada série)
   const [brentRes, fuelRes] = await Promise.all([
-    LiveData.brent(),
-    LiveData.fuel()
+    LiveData.brent(),   // Stooq → FRED → CSV local
+    LiveData.fuel()     // maisgasolina → CSV local
   ]);
   const brentRaw = brentRes.data;
   const fuelRaw  = fuelRes.data;
 
-  // Reportar ao status bar quais fontes vieram online
+  // Reportar ao status bar quais fontes vieram online (com flag live)
   if (window.LiveStatus) {
-    window.LiveStatus.report('Brent', brentRes.source);
-    window.LiveStatus.report('Combustíveis', fuelRes.source);
+    window.LiveStatus.report('Brent', brentRes);
+    window.LiveStatus.report('Combustíveis', fuelRes);
   }
 
   // Filtrar para o período relevante (Set 2025 → mais recente)
@@ -751,7 +764,7 @@ async function drawInflation() {
 
   // Carregar via LiveData (PORDATA CSV — fonte estável 1960–2025)
   const ineRes = await LiveData.inflation();
-  if (window.LiveStatus) window.LiveStatus.report('Inflação', ineRes.source);
+  if (window.LiveStatus) window.LiveStatus.report('Inflação', ineRes);
 
   // Filtrar para 2000+ (storytelling moderno)
   const data = ineRes.data.filter(d => d.ano >= 2000);
@@ -1036,7 +1049,7 @@ const ChartReveal = (() => {
 
 /* ---------- 7. CALCULADORA PESSOAL (Secção V) ---------- */
 
-function initCalculator() {
+async function initCalculator() {
   const slider     = document.getElementById('km-slider');
   const kmOutput   = document.getElementById('km-output');
   const fuelSelect = document.getElementById('fuel-select');
@@ -1044,12 +1057,34 @@ function initCalculator() {
   const result     = document.getElementById('extra-cost');
   const explainer  = document.getElementById('extra-explain');
 
-  // Preços de referência (extraídos do dataset DGEG)
-  // Antes da guerra (semana de 26 jan 2026) e atual (semana de 27 abr 2026)
-  const PRICES = {
+  // Preços derivados directamente da fonte ao vivo (mesma série dos gráficos).
+  //   "before" = última observação ANTES de 28 fev 2026 (início da guerra)
+  //   "after"  = observação MAIS RECENTE
+  // Fallback: valores conhecidos do CSV DGEG, caso a fonte ao vivo falhe.
+  const PRICES_FALLBACK = {
     gasoleo:  { before: 1.573, after: 1.958 },
     gasolina: { before: 1.665, after: 1.927 }
   };
+  let PRICES = PRICES_FALLBACK;
+  let priceAsOf = null;
+
+  try {
+    const fuelRes = await LiveData.fuel();
+    const rows = fuelRes.data;
+    if (rows && rows.length) {
+      const before = [...rows].reverse().find(d => d.date < WAR_START);
+      const latest = rows[rows.length - 1];
+      if (before && latest) {
+        PRICES = {
+          gasoleo:  { before: before.gasoleo,  after: latest.gasoleo  },
+          gasolina: { before: before.gasolina, after: latest.gasolina }
+        };
+        priceAsOf = latest.date;
+      }
+    }
+  } catch (e) {
+    console.warn('[calc] falhou a obter preços ao vivo, a usar fallback', e);
+  }
 
   function update() {
     const km = +slider.value;
@@ -1063,10 +1098,11 @@ function initCalculator() {
     const diff = custoAgora - custoAntes;
 
     kmOutput.textContent = km + ' km';
-    result.textContent  = '+ ' + fmtEur(diff);
+    result.textContent  = (diff >= 0 ? '+ ' : '') + fmtEur(diff);
+    const asOfTxt = priceAsOf ? ` <span style="opacity:.6">(actualizado a ${fmtDate(priceAsOf)})</span>` : '';
     explainer.innerHTML = `Antes da guerra pagavas <strong>${fmtEur(custoAntes)}</strong> · ` +
                           `agora pagas <strong>${fmtEur(custoAgora)}</strong>. ` +
-                          `Em 12 meses: <strong>${fmtEur(diff * 12)}</strong>.`;
+                          `Em 12 meses: <strong>${fmtEur(diff * 12)}</strong>.${asOfTxt}`;
   }
 
   [slider, fuelSelect, consumpt].forEach(el =>

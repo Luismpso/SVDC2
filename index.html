@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>O Preço da Guerra — Do Estreito de Ormuz à tua bomba de gasolina</title>
   <meta name="description" content="Como uma faixa de mar a 5000 km chega à bomba de gasolina em Portugal. Visualização do impacto económico da crise do Estreito de Ormuz (Fev 2026).">
-  <meta name="author" content="Luis Miguel Pereira Silva (PG60390) — Universidade do Minho">
+  <meta name="author" content="Luis Miguel Pereira Silva (PG60390) e Guilherme Lobo Pinto (PG60225) — Universidade do Minho">
 
   <!-- Open Graph / partilha em redes sociais -->
   <meta property="og:type" content="article">
@@ -44,7 +44,7 @@
   <header class="hero">
     <div class="hero__top">
       <span class="hero__kicker">Visualização de Dados · Maio 2026</span>
-      <span class="hero__byline">Luis Miguel Pereira Silva · PG60390</span>
+      <span class="hero__byline">Luis Miguel Pereira Silva · PG60390 &nbsp;·&nbsp; Guilherme Lobo Pinto · PG60225</span>
     </div>
 
     <div class="hero__content">
@@ -262,17 +262,24 @@
         <li><strong>Estreito de Ormuz e chokepoints globais:</strong>
           U.S. Energy Information Administration, World Oil Transit Chokepoints (Mar 2026)</li>
         <li><strong>Preço do petróleo Brent:</strong>
-          Federal Reserve Bank of St. Louis, FRED (DCOILBRENTEU) — fetch ao vivo com fallback CSV</li>
+          <a href="https://stooq.com/q/d/?s=cb.f" target="_blank" rel="noopener">Stooq.com (CB.F)</a>
+          — fetch ao vivo da série diária; fallback FRED (DCOILBRENTEU) e CSV local</li>
         <li><strong>Preços de combustíveis em Portugal:</strong>
-          Direção-Geral de Energia e Geologia (DGEG), Histórico UE</li>
-        <li><strong>Inflação:</strong> PORDATA / INE</li>
+          <a href="https://www.maisgasolina.com/estatisticas-dos-combustiveis/" target="_blank" rel="noopener">maisgasolina.com</a>
+          — médias semanais; fallback DGEG CSV</li>
+        <li><strong>Inflação:</strong> PORDATA / INE — série anual canónica (CSV)</li>
         <li><strong>Turismo:</strong> Turismo de Portugal, Permanência de Hóspedes (NUTS 2024)</li>
         <li><strong>Mapa-mundo:</strong> Natural Earth via world-atlas TopoJSON</li>
       </ul>
+      <p style="margin-top:.6rem;font-size:.85em;opacity:.75">
+        Mesma fonte para histórico e atual em cada série, com cadeia de
+        proxies CORS e cache de 1 hora em <code>sessionStorage</code>.
+        Sem chaves de API.
+      </p>
     </div>
     <div class="footer__meta">
       <p>Sistemas de Visualização de Dados e Conhecimento · Universidade do Minho · Maio 2026</p>
-      <p>Mestrado em Inteligência Artificial · Luis Miguel Pereira Silva (PG60390)</p>
+      <p>Mestrado em Inteligência Artificial · Luis Miguel Pereira Silva (PG60390) &amp; Guilherme Lobo Pinto (PG60225)</p>
       <p>Construído com D3.js v7</p>
     </div>
   </footer>
