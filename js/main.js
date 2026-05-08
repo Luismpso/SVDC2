@@ -65,15 +65,18 @@ window.LiveStatus = (() => {
   const elSrc  = document.getElementById('livebar-sources');
   const elTime = document.getElementById('livebar-time');
 
-  // Versão minimalista: a barra mostra apenas "DADOS AO VIVO · hora".
-  // Mantém-se a chamada LiveStatus.report() por compatibilidade — é no-op
-  // do ponto de vista visual, mas continua a tirar o estado de loading e
-  // a actualizar o relógio.
-  if (elSrc) elSrc.style.display = 'none';
-  // O segundo separador tem margin-left:auto e empurra a hora para a direita.
-  // Mantemos o nó (para preservar o layout) mas esvaziamos o caracter "·".
-  const sepRight = bar?.querySelector('.livebar__sep--right');
-  if (sepRight) sepRight.textContent = '';
+  // Acumula o estado de cada fonte para mostrar 🟢 (ao vivo) ou ⚪ (CSV/cache)
+  const sources = {};
+
+  function render() {
+    if (!elSrc) return;
+    const parts = Object.entries(sources).map(([name, info]) =>
+      `<span class="livebar__source ${info.live ? 'is-live' : 'is-cache'}" title="${info.source || ''}">`
+        + `${info.live ? '🟢' : '⚪'} ${name}`
+      + `</span>`
+    );
+    elSrc.innerHTML = parts.length ? parts.join(' ') : 'a carregar…';
+  }
 
   function updateTime() {
     if (!elTime) return;
@@ -85,9 +88,18 @@ window.LiveStatus = (() => {
     start() {
       bar?.classList.add('livebar--loading');
       updateTime();
+      render();
     },
-    report() {
+    /**
+     * report(nome, resultado) — chamado pelos drawX() à medida que recebem
+     * dados. resultado deve ter { live: bool, source: string }.
+     */
+    report(name, result) {
       bar?.classList.remove('livebar--loading');
+      if (name && result) {
+        sources[name] = { live: !!result.live, source: result.source || '' };
+        render();
+      }
       updateTime();
     }
   };
