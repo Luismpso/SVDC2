@@ -98,18 +98,24 @@ window.LiveStatus = (() => {
 
 async function drawMap() {
   const container = document.getElementById('map-world');
-  const width = container.clientWidth;
-  const height = Math.min(width * 0.55, 600);
+  const width  = container.clientWidth;
+  const height = Math.min(width * 0.6, 720);
 
   const svg = d3.select(container).append('svg')
     .attr('viewBox', `0 0 ${width} ${height}`)
     .attr('preserveAspectRatio', 'xMidYMid meet');
 
-  // Projeção centrada no Médio Oriente, mostrando do Atlântico ao Pacífico
+  // Natural Earth a scale=1 ocupa ~6.06 unidades em largura e ~3.01 em altura.
+  // Escolhe scale limitado pela menor dimensão e adiciona 5% de margem para
+  // garantir que NADA fica cortado (Cabo, Austrália, Alasca, Pacífico inteiro).
+  const scaleByH  = height / 3.05;
+  const scaleByW  = width  / 6.10;
+  const projScale = Math.min(scaleByH, scaleByW) * 0.95;
+
   const projection = d3.geoNaturalEarth1()
-    .scale(width / 5.2)
-    .translate([width / 2 - width * 0.05, height / 1.85])
-    .center([15, 25]);
+    .scale(projScale)
+    .translate([width / 2, height / 2])
+    .center([10, 0]);  // equador ao centro; longitude 10° para suave foco no MO
 
   const path = d3.geoPath(projection);
 
@@ -160,40 +166,129 @@ async function drawMap() {
 
   const r = d3.scaleSqrt().domain([0, 25]).range([0, 28]);
 
-  // Camada 1 — Arco "rota alternativa": Estreito de Ormuz → Cabo da Boa Esperança
-  // Aparece em hover sobre Ormuz (storytelling: se Ormuz fechar, é por aqui que se desvia)
-  const ormuz = CHOKEPOINTS.find(c => c.main);
-  const cabo  = CHOKEPOINTS.find(c => c.name === 'Cabo da Boa Esperança');
-  const arcGroup = svg.append('g').attr('class', 'reroute-arc').style('opacity', 0)
-    .style('pointer-events', 'none');
+  // ===== ROTAS DE NAVEGAÇÃO (premium, animadas) =====
+  // Três rotas que partem de Ormuz. Começam invisíveis; o primeiro clique
+  // no dot principal desenha-as do origem ao destino e depois entram em
+  // "flow" contínuo (dasharray a deslizar ao longo do path).
+  const ormuz    = CHOKEPOINTS.find(c => c.main);
+  const cabo     = CHOKEPOINTS.find(c => c.name === 'Cabo da Boa Esperança');
+  const suezCp   = CHOKEPOINTS.find(c => c.name === 'Suez / SUMED');
+  const malacaCp = CHOKEPOINTS.find(c => c.name === 'Estreito de Malaca');
 
-  if (ormuz && cabo) {
-    const [x1, y1] = projection(ormuz.coords);
-    const [x2, y2] = projection(cabo.coords);
-    // Curva via África Oriental — control points oeste de Madagáscar
-    const cx1 = x1 - 60, cy1 = y1 + 80;
-    const cx2 = x2 + 80, cy2 = y2 - 60;
-    const arcPath = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+  const orm = projection(ormuz.coords);
+  const sue = projection(suezCp.coords);
+  const mal = projection(malacaCp.coords);
+  const cab = projection(cabo.coords);
 
-    arcGroup.append('path')
-      .attr('d', arcPath)
-      .attr('fill', 'none')
-      .attr('stroke', COLORS.amberHot)
-      .attr('stroke-width', 2)
-      .attr('stroke-dasharray', '4 4')
-      .attr('opacity', 0.85);
+  // Helper: cubic Bezier
+  const bezier = (x1, y1, cx1, cy1, cx2, cy2, x2, y2) =>
+    `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
 
-    // Label da rota — meio do arco
-    arcGroup.append('text')
-      .attr('x', (x1 + x2) / 2 - 30)
-      .attr('y', (y1 + y2) / 2 + 30)
-      .attr('fill', COLORS.amberHot)
+  // Gradientes: cada rota nasce em amber-hot (em Ormuz) e desvanece
+  // para uma cor que liga ao destino — Suez/teal, Malaca/amber, Cabo/rust.
+  const defs = svg.append('defs');
+  const addGradient = (id, p1, p2, c1, c2) => {
+    const g = defs.append('linearGradient')
+      .attr('id', id).attr('gradientUnits', 'userSpaceOnUse')
+      .attr('x1', p1[0]).attr('y1', p1[1])
+      .attr('x2', p2[0]).attr('y2', p2[1]);
+    g.append('stop').attr('offset', '0%').attr('stop-color', c1).attr('stop-opacity', 0.95);
+    g.append('stop').attr('offset', '100%').attr('stop-color', c2).attr('stop-opacity', 0.55);
+  };
+  addGradient('grad-malaca', orm, mal, COLORS.amberHot, COLORS.amber);
+  addGradient('grad-suez',   orm, sue, COLORS.amberHot, COLORS.teal);
+  addGradient('grad-cabo',   orm, cab, COLORS.amberHot, COLORS.rust);
+
+  // Definições das rotas (path + label) — ordem é a ordem de revelação
+  const ROUTES = [
+    {
+      id: 'malaca',
+      d: bezier(orm[0], orm[1], orm[0]+90, orm[1]+30, mal[0]-90, mal[1]-30, mal[0], mal[1]),
+      grad: 'grad-malaca',
+      label: { x: (orm[0]+mal[0])/2 + 12, y: (orm[1]+mal[1])/2 + 28,
+               color: COLORS.amber, text: '89% → Ásia via Malaca' }
+    },
+    {
+      id: 'suez',
+      d: bezier(orm[0], orm[1], orm[0]-15, orm[1]+55, sue[0]+25, sue[1]+75, sue[0], sue[1]),
+      grad: 'grad-suez',
+      label: { x: (orm[0]+sue[0])/2 + 4, y: (orm[1]+sue[1])/2 + 60,
+               color: COLORS.teal, text: '→ Europa via Suez' }
+    },
+    {
+      id: 'cabo',
+      d: bezier(orm[0], orm[1], orm[0]-60, orm[1]+80, cab[0]+80, cab[1]-60, cab[0], cab[1]),
+      grad: 'grad-cabo',
+      label: { x: (orm[0]+cab[0])/2 + 30, y: (orm[1]+cab[1])/2 + 30,
+               color: COLORS.amberHot, text: '+15 dias por África' }
+    }
+  ];
+
+  // Group: começa invisível, é revelado no primeiro clique do Ormuz
+  const routesGroup = svg.append('g').attr('class', 'routes')
+    .style('pointer-events', 'none')
+    .style('opacity', 0);
+
+  ROUTES.forEach(r => {
+    routesGroup.append('path')
+      .attr('class', `route route--${r.id}`)
+      .attr('d', r.d)
+      .attr('stroke', `url(#${r.grad})`)
+      .attr('stroke-width', 1.8)
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-dasharray', '6 9')
+      .attr('opacity', 0.9)
+      .attr('fill', 'none');
+
+    routesGroup.append('text')
+      .attr('class', `route-label route-label--${r.id}`)
+      .attr('x', r.label.x).attr('y', r.label.y)
+      .attr('text-anchor', 'middle')
+      .attr('fill', r.label.color)
       .style('font-family', 'JetBrains Mono, monospace')
-      .style('font-size', '10px')
+      .style('font-size', '10.5px')
       .style('paint-order', 'stroke fill')
       .style('stroke', 'var(--bg-deep, #0a0e14)')
       .style('stroke-width', '4px')
-      .text('+15 dias por África');
+      .style('opacity', 0)
+      .text(r.label.text);
+  });
+
+  // Reveal — primeiro clique no Ormuz desenha as rotas e arranca o flow
+  let routesRevealed = false;
+  function revealRoutes() {
+    if (routesRevealed) return;
+    routesRevealed = true;
+    routesGroup.style('opacity', 1);
+
+    ROUTES.forEach((r, i) => {
+      const path  = routesGroup.select(`.route--${r.id}`);
+      const label = routesGroup.select(`.route-label--${r.id}`);
+      const len   = path.node().getTotalLength();
+
+      // Fase 1: desenhar o path de origem→destino
+      path
+        .attr('stroke-dasharray', `${len} ${len}`)
+        .attr('stroke-dashoffset', len)
+        .transition()
+          .duration(1400 + i * 100)
+          .delay(i * 220)
+          .ease(d3.easeQuadOut)
+          .attr('stroke-dashoffset', 0)
+        .on('end', function () {
+          // Fase 2: dasharray decorativo + flow contínuo via CSS
+          d3.select(this)
+            .attr('stroke-dasharray', '6 9')
+            .style('stroke-dashoffset', null)
+            .classed('route--flowing', true);
+        });
+
+      // Etiqueta aparece quando o path quase chegou ao destino
+      label.transition()
+        .delay(i * 220 + 1100)
+        .duration(500)
+        .style('opacity', 0.9);
+    });
   }
 
   const cp = svg.append('g').selectAll('g')
@@ -216,41 +311,64 @@ async function drawMap() {
   cp.append('circle')
     .attr('class', d => 'chokepoint' + (d.main ? ' chokepoint--main' : ''))
     .attr('r', d => r(d.value))
+    .style('cursor', d => d.main ? 'pointer' : 'default')
     .on('mouseenter', (e, d) => {
-      showTooltip(e, `<strong>${d.name}</strong>${d.value} milhões barris/dia<br>${d.desc}`);
-      // Se for Ormuz, revelar o arco para o Cabo da Boa Esperança
-      if (d.main) arcGroup.transition().duration(400).style('opacity', 1);
+      showTooltip(e, `<strong>${d.name}</strong>${d.value} milhões barris/dia<br>${d.desc}` +
+        (d.main && !routesRevealed ? '<br><span style="opacity:.7">› clica para ver as rotas</span>' : ''));
     })
     .on('mousemove',  (e, d) => showTooltip(e,
-      `<strong>${d.name}</strong>${d.value} milhões barris/dia<br>${d.desc}`))
-    .on('mouseleave', (e, d) => {
-      hideTooltip();
-      if (d.main) arcGroup.transition().duration(400).style('opacity', 0);
-    });
+      `<strong>${d.name}</strong>${d.value} milhões barris/dia<br>${d.desc}` +
+      (d.main && !routesRevealed ? '<br><span style="opacity:.7">› clica para ver as rotas</span>' : '')))
+    .on('mouseleave', () => hideTooltip())
+    .on('click', (e, d) => { if (d.main) revealRoutes(); });
 
-  // Etiqueta apenas para o Estreito de Ormuz (os outros aparecem no tooltip)
-  cp.filter(d => d.main).append('text')
-    .attr('class', 'chokepoint-label')
-    .attr('x', d => -r(d.value) - 8)
-    .attr('y', 5)
-    .attr('text-anchor', 'end')
-    .text('Estreito de Ormuz');
+  // Layout editorial das etiquetas — escolhido manualmente por geografia
+  // para evitar sobreposições com os dots e pousar sobre mares/oceanos
+  // (espaço de leitura limpo). anchor: 'start' (label à direita do ponto),
+  // 'end' (à esquerda), 'middle' (centrada). leader: leader line subtil.
+  const LABEL_LAYOUT = {
+    'Estreito de Ormuz':     { dx:  60, dy:  26, anchor: 'start',  leader: true  }, // SE — Mar Arábico
+    'Estreito de Malaca':    { dx:   0, dy:  44, anchor: 'middle', leader: false }, // S — Java/Sumatra
+    'Bab el-Mandeb':         { dx: -16, dy:   4, anchor: 'end',    leader: false }, // W — Sudão
+    'Suez / SUMED':          { dx: -16, dy:   4, anchor: 'end',    leader: false }, // W — Mediterrâneo
+    'Estreitos Turcos':      { dx:   0, dy: -14, anchor: 'middle', leader: false }, // N — Mar Negro
+    'Estreitos Dinamarq.':   { dx:  16, dy:   4, anchor: 'start',  leader: false }, // E — Báltico
+    'Cabo da Boa Esperança': { dx:  22, dy:   4, anchor: 'start',  leader: false }, // E — Índico
+    'Canal do Panamá':       { dx:  14, dy:   4, anchor: 'start',  leader: false }  // E — Caraíbas
+  };
 
-  cp.filter(d => d.main).append('text')
-    .attr('class', 'chokepoint-value')
-    .attr('x', d => -r(d.value) - 8)
-    .attr('y', 22)
-    .attr('text-anchor', 'end')
-    .text('20,9 mb/d');
+  // Etiquetagem: TODOS os chokepoints recebem nome estático.
+  // Ormuz tem destaque (Fraunces, valor por baixo, leader line).
+  // Os outros usam mini-etiquetas em mono, mais discretas.
+  cp.each(function (d) {
+    const layout = LABEL_LAYOUT[d.name];
+    if (!layout) return;
+    const g = d3.select(this);
 
-  // Hint sob o mapa: convidar a passar mouse sobre Ormuz
-  svg.append('text')
-    .attr('x', 14).attr('y', height - 10)
-    .attr('fill', COLORS.inkDim)
-    .style('font-family', 'JetBrains Mono, monospace')
-    .style('font-size', '10px')
-    .style('opacity', 0.7)
-    .text('› passa o rato sobre o Estreito de Ormuz');
+    // Leader line — só Ormuz, porque a etiqueta está afastada do dot
+    if (layout.leader) {
+      g.append('line')
+        .attr('class', 'chokepoint-leader')
+        .attr('x1', 22).attr('y1', 10)            // borda do dot, direção SE
+        .attr('x2', layout.dx - 4).attr('y2', layout.dy);  // perto do label
+    }
+
+    // Nome do chokepoint
+    g.append('text')
+      .attr('class', d.main ? 'chokepoint-label' : 'chokepoint-label-mini')
+      .attr('x', layout.dx).attr('y', layout.dy)
+      .attr('text-anchor', layout.anchor)
+      .text(d.name);
+
+    // Valor — apenas Ormuz, em segunda linha
+    if (d.main) {
+      g.append('text')
+        .attr('class', 'chokepoint-value')
+        .attr('x', layout.dx).attr('y', layout.dy + 16)
+        .attr('text-anchor', layout.anchor)
+        .text('20,9 mb/d');
+    }
+  });
 }
 
 

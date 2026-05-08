@@ -684,6 +684,49 @@ code { font-family: var(--font-mono); font-size: 0.85em; color: var(--teal); }
   stroke-width: 3px;
 }
 
+/* Mini-etiquetas para os chokepoints secundários — discretas, mono, com
+   halo escuro para legibilidade sobre oceanos e países */
+.chokepoint-label-mini {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  fill: var(--ink-soft);
+  paint-order: stroke fill;
+  stroke: var(--bg-deep);
+  stroke-width: 3px;
+  pointer-events: none;
+  opacity: 0.95;
+}
+
+/* Rotas premium — começam invisíveis e são reveladas no clique do Ormuz */
+.route {
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+/* Flow contínuo: depois do path estar desenhado, o dasharray desliza para
+   sugerir movimento de petróleo a fluir. Período = (6+9)px = 15px → desloca
+   em loop infinito sem saltos visíveis. */
+.route--flowing {
+  animation: routeFlow 1.8s linear infinite;
+}
+@keyframes routeFlow {
+  to { stroke-dashoffset: -15; }
+}
+
+.route-label {
+  pointer-events: none;
+}
+
+/* Leader line do Ormuz — tracejado subtil ligando dot à etiqueta */
+.chokepoint-leader {
+  stroke: var(--ink-dim);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 2;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 /* ====================================================================
    AXIS — eixos D3 com tema editorial
    ==================================================================== */
