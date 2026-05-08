@@ -1,89 +1,163 @@
 import os
-import re
-import json
-import pandas as pd
 import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+import urllib3
+import time
 
-# Caminho direto para o ficheiro final
-CSV_PATH = '../data/processed/combustiveis.csv'
+# Ocultar avisos SSL comuns em sites governamentais
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-def atualizar_combustiveis():
-    print("A extrair dados históricos e recentes do maisgasolina.com...")
-    url = "https://www.maisgasolina.com/estatisticas-dos-combustiveis/"
-    
+# Caminho correto para correr a partir da raiz do projeto (SVDC3)
+CSV_PATH = 'data/processed/combustiveis.csv'
+
+def buscar_dgeg_periodo(data_ini, data_fim):
+    """Função auxiliar para fazer o pedido à DGEG num período específico."""
+    url_api = "https://precoscombustiveis.dgeg.gov.pt/api/PrecoComb/PMD"
+    params = {"dataIni": data_ini, "dataFim": data_fim}
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Origin': 'https://precoscombustiveis.dgeg.gov.pt',
+        'Referer': 'https://precoscombustiveis.dgeg.gov.pt/estatistica/preco-medio-diario/'
     }
     
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        html = response.text
+    response = requests.get(url_api, params=params, headers=headers, verify=False, timeout=15)
+    # Se o método GET não for permitido (405), tenta POST
+    if response.status_code == 405:
+        response = requests.post(url_api, json=params, headers=headers, verify=False, timeout=15)
         
-        # Procura as séries do Highcharts no código-fonte
-        series_re = re.finditer(r"name\s*:\s*['\"]([^'\"]+)['\"][\s\S]*?data\s*:\s*(\[[\s\S]*?\])\s*[,}]", html)
-        
-        dados_extraidos = {'gasoleo': {}, 'gasolina': {}}
-        
-        for match in series_re:
-            name = match.group(1).lower()
-            data_str = match.group(2)
-            
-            # Converte a data do formato Javascript (Date.UTC) para YYYY-MM-DD
-            data_str_clean = re.sub(
-                r'Date\.UTC\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)',
-                lambda m: f'"{m.group(1)}-{int(m.group(2))+1:02d}-{int(m.group(3)):02d}"',
-                data_str
-            )
-            
-            try:
-                data_str_clean = data_str_clean.replace("'", '"')
-                pontos = json.loads(data_str_clean)
-                
-                for ponto in pontos:
-                    if isinstance(ponto, list) and len(ponto) == 2:
-                        data_iso = ponto[0]
-                        preco = ponto[1]
-                        
-                        if 'gasóleo simples' in name or 'diesel' in name:
-                            dados_extraidos['gasoleo'][data_iso] = preco
-                        elif 'gasolina 95 simples' in name:
-                            dados_extraidos['gasolina'][data_iso] = preco
-                            
-            except Exception as e:
-                continue
+    response.raise_for_status()
+    return response.json().get('resultado', [])
 
-        # Junta os dados do gasóleo e gasolina usando a data
-        todas_datas = set(dados_extraidos['gasoleo'].keys()).union(set(dados_extraidos['gasolina'].keys()))
-        linhas = []
-        for d in sorted(todas_datas):
-            linhas.append({
-                'date': d,
-                'gasoleo_pvp_eur_l': dados_extraidos['gasoleo'].get(d, None),
-                'gasolina95_pvp_eur_l': dados_extraidos['gasolina'].get(d, None)
-            })
-            
-        df_novo = pd.DataFrame(linhas)
-        # Remove linhas que não tenham qualquer preço
-        df_novo = df_novo.dropna(subset=['gasoleo_pvp_eur_l', 'gasolina95_pvp_eur_l'], how='all')
+def extrair_dgeg(historico_completo=False):
+    """Extrai da DGEG. Se historico_completo for True, saca 10 anos. Se não, saca 15 dias."""
+    print("A aceder à fonte Primária: API DGEG...")
+    resultados = []
+    
+    if historico_completo:
+        print("⚠️ Base de dados não encontrada. A iniciar extração de 10 ANOS de histórico...")
+        ano_atual = datetime.now().year
+        # Vai buscar ano a ano para o servidor do Estado não bloquear o pedido
+        for ano in range(ano_atual - 10, ano_atual + 1):
+            data_ini = f"{ano}-01-01"
+            data_fim = f"{ano}-12-31" if ano != ano_atual else datetime.now().strftime('%Y-%m-%d')
+            print(f"  -> A descarregar ano {ano}...")
+            try:
+                res = buscar_dgeg_periodo(data_ini, data_fim)
+                resultados.extend(res)
+                time.sleep(1) # Pausa amigável de 1 segundo para não sobrecarregar o servidor
+            except Exception as e:
+                print(f"     Falha ao extrair {ano}: {e}")
+    else:
+        # Modo normal diário (margem de 15 dias para segurança)
+        data_fim = datetime.now().strftime('%Y-%m-%d')
+        data_ini = (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d')
+        resultados = buscar_dgeg_periodo(data_ini, data_fim)
         
-        # Se já tiveres um CSV antigo, fazemos um 'merge' inteligente (mantendo o mais recente)
-        if os.path.exists(CSV_PATH):
+    # Processar o JSON resultante
+    dados_por_data = {}
+    for item in resultados:
+        data_item = str(item.get('Data', ''))[:10]
+        combustivel = str(item.get('TipoCombustivel', '')).lower()
+        preco_str = str(item.get('Preco', ''))
+        
+        if not data_item or not preco_str:
+            continue
+            
+        preco_float = float(preco_str.replace('€', '').replace(',', '.').strip())
+        if data_item not in dados_por_data:
+            dados_por_data[data_item] = {}
+            
+        if 'gasóleo' in combustivel or 'gasoleo' in combustivel:
+            if 'simples' in combustivel:
+                dados_por_data[data_item]['gasoleo_pvp_eur_l'] = preco_float
+        if 'gasolina' in combustivel:
+            if '95' in combustivel and 'simples' in combustivel:
+                dados_por_data[data_item]['gasolina95_pvp_eur_l'] = preco_float
+
+    linhas = []
+    for data, precos in dados_por_data.items():
+        if 'gasoleo_pvp_eur_l' in precos and 'gasolina95_pvp_eur_l' in precos:
+            linhas.append({
+                'date': data,
+                'gasoleo_pvp_eur_l': precos['gasoleo_pvp_eur_l'],
+                'gasolina95_pvp_eur_l': precos['gasolina95_pvp_eur_l']
+            })
+    return pd.DataFrame(linhas)
+
+def extrair_ense():
+    """Fallback: Extrai os preços de referência oficiais da ENSE usando BeautifulSoup."""
+    print("A tentar fonte Secundária: ENSE...")
+    url = "https://www.ense-epe.pt/precos-de-referencia/"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    response = requests.get(url, headers=headers, verify=False, timeout=15)
+    response.raise_for_status()
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
+    tabela = soup.find('table', class_='table')
+    if not tabela: 
+        return pd.DataFrame()
+        
+    linhas = []
+    for tr in tabela.find_all('tr'):
+        tds = tr.find_all('td')
+        if len(tds) >= 3:
+            try:
+                data_iso = datetime.strptime(tds[0].text.strip(), '%d/%m/%Y').strftime('%Y-%m-%d')
+                gasolina_float = float(tds[1].text.replace('€', '').replace(',', '.').strip())
+                gasoleo_float = float(tds[2].text.replace('€', '').replace(',', '.').strip())
+                linhas.append({'date': data_iso, 'gasoleo_pvp_eur_l': gasoleo_float, 'gasolina95_pvp_eur_l': gasolina_float})
+            except Exception:
+                continue
+    return pd.DataFrame(linhas)
+
+def atualizar_combustiveis():
+    print("A iniciar pipeline DataOps de Combustíveis...")
+    df_novo = pd.DataFrame()
+    
+    # Lógica de Self-Healing: Se o ficheiro não existir, pede histórico completo (10 anos)
+    precisa_historico = not os.path.exists(CSV_PATH)
+    
+    # 1. Tentar Fonte Primária (DGEG)
+    try:
+        df_novo = extrair_dgeg(historico_completo=precisa_historico)
+        if not df_novo.empty:
+            print(f"✅ SUCESSO: {len(df_novo)} dias de dados recolhidos da DGEG!")
+    except Exception as e:
+        print(f"⚠️ A DGEG falhou: {e}")
+        
+    # 2. Tentar Fonte Secundária (só para modo diário)
+    if df_novo.empty and not precisa_historico:
+        try:
+            df_novo = extrair_ense()
+            if not df_novo.empty:
+                print(f"✅ SUCESSO: Dados recolhidos da ENSE!")
+        except Exception as e:
+            print(f"⚠️ A ENSE também falhou: {e}")
+            
+    if df_novo.empty:
+        print("❌ ERRO CRÍTICO: Impossível aceder a fontes oficiais hoje.")
+        return
+
+    # 3. Guardar na Base de Dados
+    try:
+        if not precisa_historico:
             df_antigo = pd.read_csv(CSV_PATH)
+            # Fundir com os dados antigos e manter sempre os mais recentes em caso de datas iguais
             df_final = pd.concat([df_antigo, df_novo]).drop_duplicates(subset=['date'], keep='last')
         else:
             df_final = df_novo
             
-        # Ordena cronologicamente
         df_final = df_final.sort_values('date')
-        
-        # Guarda o ficheiro final
         os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
         df_final.to_csv(CSV_PATH, index=False)
-        print(f"✅ Sucesso! O ficheiro tem agora {len(df_final)} registos e está guardado em {CSV_PATH}")
+        print(f"🔥 Operação concluída! CSV conta agora com {len(df_final)} dias em: {CSV_PATH}")
         
     except Exception as e:
-        print(f"❌ Erro ao atualizar combustíveis: {e}")
+        print(f"❌ Erro ao gravar o CSV: {e}")
 
 if __name__ == "__main__":
     atualizar_combustiveis()
