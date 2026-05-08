@@ -399,10 +399,33 @@ async function drawFlows() {
   // Carrega CSV "long-format-friendly" e pivota
   const raw = await d3.csv('data/processed/chokepoints_overview.csv');
 
-  const yearCols = ['2020','2021','2022','2023','2024','1H2025'];
-  // 1H2025 representa o 1.º semestre de 2025 → posiciona no meio do semestre (≈ Q1H2025 = 2025.25)
-  // (não em 2025.5 = "fim de 2025", como estava antes)
-  const yearVals = yearCols.map((_, i) => i === 5 ? Q1H2025 : 2020 + i);
+  // Descobrir colunas temporais dinamicamente do header do CSV.
+  // Aceita: ano completo "2020", semestre "1H2025", trimestre "1Q2026".
+  // Quando a EIA publicar 2025 (ano cheio), 2H2025, 1H2026, 1Q2026, etc.,
+  // o gráfico actualiza-se sozinho — basta correr api/fluxos.py.
+  const periodCols = raw.columns.filter(c => /^(\d{4}|\d[HQ]\d{4})$/.test(c));
+
+  // Converte um período para um valor numérico no eixo X
+  // Ano "2020" → 2020 (1 jan); "1H2025" → 2025.25 (meio do 1º semestre);
+  // "1Q2026" → 2026.125 (meio do Q1); etc.
+  const periodToYear = (p) => {
+    const yearOnly = p.match(/^(\d{4})$/);
+    if (yearOnly) return +yearOnly[1];
+    const half = p.match(/^([12])H(\d{4})$/);
+    if (half) return +half[2] + (half[1] === '1' ? 0.25 : 0.75);
+    const qtr = p.match(/^([1-4])Q(\d{4})$/);
+    if (qtr) return +qtr[2] + (+qtr[1] - 1) * 0.25 + 0.125;
+    return NaN;
+  };
+  // Etiqueta curta do tick (ex.: "2023", "1H25", "Q1 26")
+  const periodLabel = (p) => {
+    if (/^\d{4}$/.test(p)) return p;
+    const m = p.match(/^(\d[HQ])(\d{2})(\d{2})$/);   // ex.: "1H2025" → ["1H","20","25"]
+    return m ? `${m[1]}${m[3]}` : p;
+  };
+
+  const yearCols = periodCols;
+  const yearVals = yearCols.map(periodToYear);
 
   // Apenas as 4 séries mais relevantes para o storytelling
   const FOCUS = ['Strait of Hormuz','Bab el-Mandeb','Suez Canal and SUMED Pipeline','Cape of Good Hope'];
@@ -423,18 +446,23 @@ async function drawFlows() {
     .filter(r => FOCUS.includes(r.chokepoint))
     .map(r => ({
       name: r.chokepoint,
-      values: yearCols.map((c, i) => ({ year: yearVals[i], value: +r[c] }))
+      values: yearCols.map((c, i) => ({
+        year: yearVals[i], value: +r[c], periodLabel: c
+      })).filter(d => !isNaN(d.value))
     }));
 
-  const x = d3.scaleLinear().domain([2020, Q1H2025 + 0.4]).range([margin.left, width - margin.right]);
+  // Domínio do X: do primeiro ao último período + uma pequena margem para a legenda
+  const xMin = Math.floor(d3.min(yearVals));
+  const xMax = d3.max(yearVals);
+  const x = d3.scaleLinear().domain([xMin, xMax + 0.4]).range([margin.left, width - margin.right]);
   const y = d3.scaleLinear().domain([0, 25]).nice().range([height - margin.bottom, margin.top]);
 
-  // Eixos — ticks customizados para mostrar "1H25" no lugar de 2025.25
+  // Eixo X: tick em cada período presente no CSV, etiqueta curta para semestre/trimestre
   svg.append('g').attr('class', 'axis axis--x')
     .attr('transform', `translate(0,${height - margin.bottom})`)
     .call(d3.axisBottom(x)
-      .tickValues([2020, 2021, 2022, 2023, 2024, Q1H2025])
-      .tickFormat(d => d === Q1H2025 ? '1H25' : String(Math.floor(d))));
+      .tickValues(yearVals)
+      .tickFormat((v, i) => periodLabel(yearCols[i])));
 
   svg.append('g').attr('class', 'axis axis--y')
     .attr('transform', `translate(${margin.left},0)`)
@@ -475,7 +503,7 @@ async function drawFlows() {
         .attr('r', 3)
         .attr('fill', SERIES_COLOR[s.name])
         .on('mouseenter', (e, d) => showTooltip(e,
-          `<strong>${LABELS[s.name]}</strong>${d.year === Q1H2025 ? '1.º sem. 2025' : d.year}: ${d.value.toFixed(1)} mb/d`))
+          `<strong>${LABELS[s.name]}</strong>${d.periodLabel}: ${d.value.toFixed(1)} mb/d`))
         .on('mouseleave', hideTooltip);
 
     // Etiqueta no fim de cada linha

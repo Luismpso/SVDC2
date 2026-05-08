@@ -1,69 +1,59 @@
 import os
 import pandas as pd
 import yfinance as yf
-from datetime import datetime, timedelta
+import requests
+import io
 
-CSV_PATH = '../data/processed/brent.csv'
+CSV_PATH = 'data/processed/brent.csv'
+
+def fetch_yfinance():
+    print("  · A tentar Yahoo Finance (BZ=F)...")
+    # Puxa desde 2016 para garantir os teus 10 anos de histórico
+    ticker = yf.Ticker("BZ=F")
+    df = ticker.history(start="2016-01-01")
+    if df.empty:
+        raise ValueError("Yahoo Finance devolveu dados vazios.")
+    
+    df = df.reset_index()
+    # Remover fuso horário e formatar data
+    df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None).dt.strftime('%Y-%m-%d')
+    df = df[['Date', 'Close']].rename(columns={'Date': 'observation_date', 'Close': 'DCOILBRENTEU'})
+    return df.dropna()
+
+def fetch_fred():
+    print("  · Fallback: A tentar FRED (St. Louis Fed)...")
+    url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILBRENTEU"
+    r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
+    r.raise_for_status()
+    df = pd.read_csv(io.StringIO(r.text))
+    if 'DATE' in df.columns:
+        df = df.rename(columns={'DATE': 'observation_date'})
+    df['DCOILBRENTEU'] = pd.to_numeric(df['DCOILBRENTEU'], errors='coerce')
+    return df.dropna()
 
 def atualizar_brent():
-    print("A atualizar dados do Brent (Yahoo Finance)...")
+    print("→ A atualizar Brent diário (Histórico de 10 anos)...")
+    df = None
     
-    data_inicio = "2020-01-01" # Data por defeito para criar histórico inicial
-    df_antigo = None
-    
-    # Se o ficheiro já existir, vamos procurar apenas os últimos dias
-    if os.path.exists(CSV_PATH):
-        try:
-            df_antigo = pd.read_csv(CSV_PATH)
-            if not df_antigo.empty:
-                # Pega na última data existente e recua 5 dias por segurança 
-                # (para cobrir fins de semana, feriados ou correções de mercado)
-                ultima_data_str = df_antigo['observation_date'].max()
-                ultima_data = datetime.strptime(ultima_data_str, '%Y-%m-%d')
-                data_inicio = (ultima_data - timedelta(days=5)).strftime('%Y-%m-%d')
-                print(f"CSV encontrado. A procurar dados apenas a partir de {data_inicio}...")
-        except Exception as e:
-            print(f"Aviso: Não foi possível ler o CSV antigo, a recriar histórico inteiro. Erro: {e}")
-
     try:
-        # Fazer o fetch ao Yahoo Finance
-        brent = yf.Ticker("BZ=F")
-        df_novo = brent.history(start=data_inicio)
-        
-        if df_novo.empty:
-            print("Nenhum dado novo encontrado para o Brent.")
-            return
-
-        # Limpar e formatar os dados novos
-        df_novo = df_novo.reset_index()
-        
-        # Garantir que extraímos a data corretamente (o yfinance devolve com timezone)
-        if 'Date' in df_novo.columns:
-            df_novo['observation_date'] = df_novo['Date'].dt.strftime('%Y-%m-%d')
-        else:
-            df_novo['observation_date'] = df_novo['Datetime'].dt.strftime('%Y-%m-%d')
-            
-        df_novo = df_novo[['observation_date', 'Close']]
-        df_novo.columns = ['observation_date', 'DCOILBRENTEU']
-        df_novo['DCOILBRENTEU'] = df_novo['DCOILBRENTEU'].round(2)
-
-        # Fundir com os dados antigos (se existirem)
-        if df_antigo is not None and not df_antigo.empty:
-            # Junta tudo e, se houver datas repetidas, mantém a observação mais recente
-            df_final = pd.concat([df_antigo, df_novo]).drop_duplicates(subset=['observation_date'], keep='last')
-        else:
-            df_final = df_novo
-            
-        # Ordenar cronologicamente
-        df_final = df_final.sort_values('observation_date')
-
-        # Guardar
-        os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
-        df_final.to_csv(CSV_PATH, index=False)
-        print(f"✅ Sucesso! Brent atualizado. O ficheiro tem agora {len(df_final)} registos e está guardado em {CSV_PATH}")
-
+        df = fetch_yfinance()
     except Exception as e:
-        print(f"❌ Erro ao atualizar Brent: {e}")
+        print(f"  ✗ Yahoo falhou: {e}")
+        try:
+            df = fetch_fred()
+        except Exception as e2:
+            print(f"  ✗ FRED falhou: {e2}")
+            
+    if df is None or df.empty:
+        print("❌ Todas as fontes falharam. Brent não atualizado.")
+        return
+
+    df = df.sort_values('observation_date').reset_index(drop=True)
+    df['DCOILBRENTEU'] = df['DCOILBRENTEU'].round(2)
+
+    os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
+    df.to_csv(CSV_PATH, index=False)
+    print(f"✅ Sucesso! O ficheiro Brent foi salvo com {len(df)} dias de histórico.")
 
 if __name__ == "__main__":
     atualizar_brent()
