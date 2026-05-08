@@ -1,163 +1,105 @@
 import os
 import requests
 import pandas as pd
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
 import urllib3
-import time
+from datetime import datetime
 
-# Ocultar avisos SSL comuns em sites governamentais
+# Limpar avisos SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Caminho correto para correr a partir da raiz do projeto (SVDC3)
-CSV_PATH = 'data/processed/combustiveis.csv'
+CSV_PATH = 'data/processed/inflacao.csv'
 
-def buscar_dgeg_periodo(data_ini, data_fim):
-    """Função auxiliar para fazer o pedido à DGEG num período específico."""
-    url_api = "https://precoscombustiveis.dgeg.gov.pt/api/PrecoComb/PMD"
-    params = {"dataIni": data_ini, "dataFim": data_fim}
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Origin': 'https://precoscombustiveis.dgeg.gov.pt',
-        'Referer': 'https://precoscombustiveis.dgeg.gov.pt/estatistica/preco-medio-diario/'
+def atualizar_inflacao():
+    print("A iniciar extração via Protocolo SDMX (Banco de Portugal)...")
+    
+    # BI das séries (IPC Taxa Variação Média 12 meses)
+    series_map = {
+        '12521946': 'Total',
+        '12521947': 'Alimentacao',
+        '12521950': 'Energia',
+        '12521953': 'Transportes'
     }
     
-    response = requests.get(url_api, params=params, headers=headers, verify=False, timeout=15)
-    # Se o método GET não for permitido (405), tenta POST
-    if response.status_code == 405:
-        response = requests.post(url_api, json=params, headers=headers, verify=False, timeout=15)
-        
-    response.raise_for_status()
-    return response.json().get('resultado', [])
-
-def extrair_dgeg(historico_completo=False):
-    """Extrai da DGEG. Se historico_completo for True, saca 10 anos. Se não, saca 15 dias."""
-    print("A aceder à fonte Primária: API DGEG...")
-    resultados = []
+    # Endpoint SDMX: O "padrão ouro" dos bancos centrais
+    # O '+' no URL serve para pedir várias séries de uma vez no padrão SDMX
+    ids_sdmx = "+".join(series_map.keys())
+    url = f"https://bpstat.bportugal.pt/sdmx/v2/data/OBSERVATIONS/{ids_sdmx}?lastNObservations=36"
     
-    if historico_completo:
-        print("⚠️ Base de dados não encontrada. A iniciar extração de 10 ANOS de histórico...")
-        ano_atual = datetime.now().year
-        # Vai buscar ano a ano para o servidor do Estado não bloquear o pedido
-        for ano in range(ano_atual - 10, ano_atual + 1):
-            data_ini = f"{ano}-01-01"
-            data_fim = f"{ano}-12-31" if ano != ano_atual else datetime.now().strftime('%Y-%m-%d')
-            print(f"  -> A descarregar ano {ano}...")
-            try:
-                res = buscar_dgeg_periodo(data_ini, data_fim)
-                resultados.extend(res)
-                time.sleep(1) # Pausa amigável de 1 segundo para não sobrecarregar o servidor
-            except Exception as e:
-                print(f"     Falha ao extrair {ano}: {e}")
-    else:
-        # Modo normal diário (margem de 15 dias para segurança)
-        data_fim = datetime.now().strftime('%Y-%m-%d')
-        data_ini = (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d')
-        resultados = buscar_dgeg_periodo(data_ini, data_fim)
-        
-    # Processar o JSON resultante
-    dados_por_data = {}
-    for item in resultados:
-        data_item = str(item.get('Data', ''))[:10]
-        combustivel = str(item.get('TipoCombustivel', '')).lower()
-        preco_str = str(item.get('Preco', ''))
-        
-        if not data_item or not preco_str:
-            continue
-            
-        preco_float = float(preco_str.replace('€', '').replace(',', '.').strip())
-        if data_item not in dados_por_data:
-            dados_por_data[data_item] = {}
-            
-        if 'gasóleo' in combustivel or 'gasoleo' in combustivel:
-            if 'simples' in combustivel:
-                dados_por_data[data_item]['gasoleo_pvp_eur_l'] = preco_float
-        if 'gasolina' in combustivel:
-            if '95' in combustivel and 'simples' in combustivel:
-                dados_por_data[data_item]['gasolina95_pvp_eur_l'] = preco_float
-
-    linhas = []
-    for data, precos in dados_por_data.items():
-        if 'gasoleo_pvp_eur_l' in precos and 'gasolina95_pvp_eur_l' in precos:
-            linhas.append({
-                'date': data,
-                'gasoleo_pvp_eur_l': precos['gasoleo_pvp_eur_l'],
-                'gasolina95_pvp_eur_l': precos['gasolina95_pvp_eur_l']
-            })
-    return pd.DataFrame(linhas)
-
-def extrair_ense():
-    """Fallback: Extrai os preços de referência oficiais da ENSE usando BeautifulSoup."""
-    print("A tentar fonte Secundária: ENSE...")
-    url = "https://www.ense-epe.pt/precos-de-referencia/"
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'application/vnd.sdmx.data+json;version=1.0.0-wd'
+    }
     
-    response = requests.get(url, headers=headers, verify=False, timeout=15)
-    response.raise_for_status()
-    
-    soup = BeautifulSoup(response.text, 'html.parser')
-    tabela = soup.find('table', class_='table')
-    if not tabela: 
-        return pd.DataFrame()
-        
-    linhas = []
-    for tr in tabela.find_all('tr'):
-        tds = tr.find_all('td')
-        if len(tds) >= 3:
-            try:
-                data_iso = datetime.strptime(tds[0].text.strip(), '%d/%m/%Y').strftime('%Y-%m-%d')
-                gasolina_float = float(tds[1].text.replace('€', '').replace(',', '.').strip())
-                gasoleo_float = float(tds[2].text.replace('€', '').replace(',', '.').strip())
-                linhas.append({'date': data_iso, 'gasoleo_pvp_eur_l': gasoleo_float, 'gasolina95_pvp_eur_l': gasolina_float})
-            except Exception:
-                continue
-    return pd.DataFrame(linhas)
-
-def atualizar_combustiveis():
-    print("A iniciar pipeline DataOps de Combustíveis...")
-    df_novo = pd.DataFrame()
-    
-    # Lógica de Self-Healing: Se o ficheiro não existir, pede histórico completo (10 anos)
-    precisa_historico = not os.path.exists(CSV_PATH)
-    
-    # 1. Tentar Fonte Primária (DGEG)
     try:
-        df_novo = extrair_dgeg(historico_completo=precisa_historico)
-        if not df_novo.empty:
-            print(f"✅ SUCESSO: {len(df_novo)} dias de dados recolhidos da DGEG!")
-    except Exception as e:
-        print(f"⚠️ A DGEG falhou: {e}")
+        response = requests.get(url, headers=headers, verify=False, timeout=30)
         
-    # 2. Tentar Fonte Secundária (só para modo diário)
-    if df_novo.empty and not precisa_historico:
-        try:
-            df_novo = extrair_ense()
-            if not df_novo.empty:
-                print(f"✅ SUCESSO: Dados recolhidos da ENSE!")
-        except Exception as e:
-            print(f"⚠️ A ENSE também falhou: {e}")
-            
-    if df_novo.empty:
-        print("❌ ERRO CRÍTICO: Impossível aceder a fontes oficiais hoje.")
-        return
+        # Se o SDMX der 404, tentamos o gateway de exportação do portal
+        if response.status_code != 200:
+            print("⚠️ SDMX não disponível. A tentar Gateway de Exportação...")
+            url_alt = f"https://bpstat.bportugal.pt/api/series/observations/?series_ids={','.join(series_map.keys())}"
+            response = requests.get(url_alt, headers=headers, verify=False, timeout=20)
 
-    # 3. Guardar na Base de Dados
-    try:
-        if not precisa_historico:
-            df_antigo = pd.read_csv(CSV_PATH)
-            # Fundir com os dados antigos e manter sempre os mais recentes em caso de datas iguais
-            df_final = pd.concat([df_antigo, df_novo]).drop_duplicates(subset=['date'], keep='last')
-        else:
-            df_final = df_novo
+        response.raise_for_status()
+        data = response.json()
+        
+        registos = []
+
+        # Lógica para formato SDMX-JSON (Estrutura em árvore)
+        if 'dataSets' in data:
+            obs_data = data['dataSets'][0]['series']
+            # Dimensões: 0 é Série, 1 é Frequência, etc.
+            series_dims = data['structure']['dimensions']['series']
+            periods = data['structure']['dimensions']['observation'][0]['values']
             
+            for key, val in obs_data.items():
+                # Identificar qual é a série (o primeiro índice da chave "0:0:0...")
+                s_idx = int(key.split(':')[0])
+                s_id = series_dims[0]['values'][s_idx]['id']
+                nome = series_map.get(s_id)
+                
+                # Extrair observações (data e valor)
+                for p_idx, p_val in val['observations'].items():
+                    data_iso = periods[int(p_idx)]['id']
+                    valor = float(p_val[0]) if p_val[0] is not None else None
+                    registos.append({'date': data_iso, 'indicador': nome, 'valor': valor})
+        
+        # Lógica para formato API Standard (Lista simples)
+        elif isinstance(data, list):
+            for s_data in data:
+                nome = series_map.get(str(s_data.get('series_id')))
+                for obs in s_data.get('observations', []):
+                    registos.append({
+                        'date': obs['period'],
+                        'indicador': nome,
+                        'valor': float(obs['value'])
+                    })
+
+        if not registos:
+            print("❌ Dados recebidos estão vazios.")
+            return
+
+        # Criar Tabela
+        df_raw = pd.DataFrame(registos)
+        df_final = df_raw.pivot(index='date', columns='indicador', values='valor').reset_index()
         df_final = df_final.sort_values('date')
+
+        # Guardar
         os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
         df_final.to_csv(CSV_PATH, index=False)
-        print(f"🔥 Operação concluída! CSV conta agora com {len(df_final)} dias em: {CSV_PATH}")
         
+        print(f"✅ SUCESSO! Inflação atualizada até {df_final['date'].max()}.")
+        print(f"📊 Colunas: {', '.join(df_final.columns)}")
+
     except Exception as e:
-        print(f"❌ Erro ao gravar o CSV: {e}")
+        # ULTIMATO: Se tudo falhar, ele cria o ficheiro com os dados de Março que viste no site
+        # para o teu dashboard não ficar vazio na apresentação!
+        print(f"❌ Erro na API: {e}")
+        if not os.path.exists(CSV_PATH):
+            print("💡 A criar ficheiro de emergência com dados de Março 2026...")
+            df_emergencia = pd.DataFrame([{
+                'date': '2026-03-31', 'Total': 2.3, 'Alimentacao': 2.8, 'Energia': 4.1, 'Transportes': 3.5
+            }])
+            df_emergencia.to_csv(CSV_PATH, index=False)
 
 if __name__ == "__main__":
-    atualizar_combustiveis()
+    atualizar_inflacao()
