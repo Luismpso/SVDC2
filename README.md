@@ -95,15 +95,11 @@ SVDC3/
     │   ├── 50m_cultural.zip               (Natural Earth)
     │   └── README.md
     └── processed/          # ★ CSVs limpos consumidos pelo site
-        ├── brent_daily.csv                ← prep_brent.ipynb
-        ├── precos_combustiveis_pt.csv     ← prep_combustiveis.ipynb
-        ├── inflacao_pordata.csv           ← prep_inflacao.ipynb
-        ├── dormidas_regiao.csv            ← prep_turismo.ipynb
-        ├── chokepoints_overview.csv       ← prep_chokepoints.ipynb
-        ├── hormuz_flows.csv               ← prep_chokepoints.ipynb
-        ├── suez_babmandeb_flows.csv       ← prep_chokepoints.ipynb
-        ├── cape_good_hope_flows.csv       ← prep_chokepoints.ipynb
-        ├── hormuz_destinations.csv        ← prep_chokepoints.ipynb
+        ├── brent.csv                      ← api/brent.py
+        ├── combustiveis.csv               ← api/combustiveis.py
+        ├── inflacao.csv                   ← api/inflacao.py
+        ├── chokepoints.csv                ← api/fluxos.py  (wide, drawFlows)
+        ├── hormuz.csv                     ← api/fluxos.py  (drawDestinations)
         └── README.md
 ```
 

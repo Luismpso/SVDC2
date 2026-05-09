@@ -2,35 +2,55 @@ name: Daily Data Update
 
 on:
   schedule:
-    # Runs every day at 08:00 UTC
+    # Diário às 08:00 UTC (depois do FRED publicar o dia anterior)
     - cron: '0 8 * * *'
-  workflow_dispatch: # Allows you to run it manually from the Actions tab
+  workflow_dispatch:   # Permite correr manualmente a partir do separador "Actions"
+
+permissions:
+  contents: write   # Necessário para que o bot consiga fazer push das atualizações
 
 jobs:
-  update-process:
+  update-data:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-      
+        uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-          
+          python-version: '3.11'
+          cache: pip
+
       - name: Install dependencies
         run: |
-          pip install pandas yfinance requests beautifulsoup4
-          
-      - name: Run update scripts
+          python -m pip install --upgrade pip
+          pip install pandas requests beautifulsoup4 lxml openpyxl yfinance html5lib
+
+      - name: Update Brent (FRED → yfinance fallback)
+        run: python api/brent.py
+        continue-on-error: true   # Falha numa fonte não bloqueia as outras
+
+      - name: Update Combustíveis PT (DGEG → ENSE fallback)
+        run: python api/combustiveis.py
+        continue-on-error: true
+
+      - name: Update Inflação (Eurostat HICP)
+        run: python api/inflacao.py
+        continue-on-error: true
+
+      - name: Update Chokepoints (EIA)
+        run: python api/fluxos.py
+        continue-on-error: true
+
+      - name: Commit & push se houver alterações
         run: |
-          python brent.py
-          python combustiveis.py
-          
-      - name: Commit and push changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "Data Update Bot"
+          git config --local user.email "actions@github.com"
+          git config --local user.name  "Data Update Bot"
           git add data/processed/*.csv
-          git commit -m "Update data" || exit 0
-          git push
+          if git diff --staged --quiet; then
+            echo "Sem alterações nos CSVs — nada para commitar."
+          else
+            git commit -m "chore(data): atualização diária automática"
+            git push
+          fi

@@ -1,49 +1,9 @@
-date,periodo_original,chokepoint,value
-2020-07-01,2020,Bab el-Mandeb,5.7
-2021-07-01,2021,Bab el-Mandeb,6.0
-2022-07-01,2022,Bab el-Mandeb,8.0
-2023-07-01,2023,Bab el-Mandeb,9.3
-2024-07-01,2024,Bab el-Mandeb,4.1
-2025-04-01,1H2025,Bab el-Mandeb,4.2
-2020-07-01,2020,Cape of Good Hope,7.9
-2021-07-01,2021,Cape of Good Hope,7.2
-2022-07-01,2022,Cape of Good Hope,6.1
-2023-07-01,2023,Cape of Good Hope,6.2
-2024-07-01,2024,Cape of Good Hope,9.3
-2025-04-01,1H2025,Cape of Good Hope,9.1
-2020-07-01,2020,Danish Straits,3.1
-2021-07-01,2021,Danish Straits,3.1
-2022-07-01,2022,Danish Straits,4.2
-2023-07-01,2023,Danish Straits,5.0
-2024-07-01,2024,Danish Straits,4.9
-2025-04-01,1H2025,Danish Straits,4.9
-2020-07-01,2020,Panama Canal,1.7
-2021-07-01,2021,Panama Canal,1.8
-2022-07-01,2022,Panama Canal,2.2
-2023-07-01,2023,Panama Canal,2.2
-2024-07-01,2024,Panama Canal,2.0
-2025-04-01,1H2025,Panama Canal,2.3
-2020-07-01,2020,Strait of Hormuz,19.2
-2021-07-01,2021,Strait of Hormuz,19.7
-2022-07-01,2022,Strait of Hormuz,21.9
-2023-07-01,2023,Strait of Hormuz,21.8
-2024-07-01,2024,Strait of Hormuz,20.7
-2025-04-01,1H2025,Strait of Hormuz,20.9
-2020-07-01,2020,Strait of Malacca,22.8
-2021-07-01,2021,Strait of Malacca,22.1
-2022-07-01,2022,Strait of Malacca,23.0
-2023-07-01,2023,Strait of Malacca,24.0
-2024-07-01,2024,Strait of Malacca,22.5
-2025-04-01,1H2025,Strait of Malacca,23.2
-2020-07-01,2020,Suez Canal and SUMED Pipeline,5.4
-2021-07-01,2021,Suez Canal and SUMED Pipeline,5.2
-2022-07-01,2022,Suez Canal and SUMED Pipeline,7.3
-2023-07-01,2023,Suez Canal and SUMED Pipeline,8.8
-2024-07-01,2024,Suez Canal and SUMED Pipeline,4.8
-2025-04-01,1H2025,Suez Canal and SUMED Pipeline,4.9
-2020-07-01,2020,Turkish Straits (Dardanelles),3.2
-2021-07-01,2021,Turkish Straits (Dardanelles),3.3
-2022-07-01,2022,Turkish Straits (Dardanelles),3.2
-2023-07-01,2023,Turkish Straits (Dardanelles),3.5
-2024-07-01,2024,Turkish Straits (Dardanelles),3.6
-2025-04-01,1H2025,Turkish Straits (Dardanelles),3.7
+chokepoint,2020,2021,2022,2023,2024,1H2025
+Bab el-Mandeb,5.7,6.0,8.0,9.3,4.1,4.2
+Cape of Good Hope,7.9,7.2,6.1,6.2,9.3,9.1
+Danish Straits,3.1,3.1,4.2,5.0,4.9,4.9
+Panama Canal,1.7,1.8,2.2,2.2,2.0,2.3
+Strait of Hormuz,19.2,19.7,21.9,21.8,20.7,20.9
+Strait of Malacca,22.8,22.1,23.0,24.0,22.5,23.2
+Suez Canal and SUMED Pipeline,5.4,5.2,7.3,8.8,4.8,4.9
+Turkish Straits (Dardanelles),3.2,3.3,3.2,3.5,3.6,3.7

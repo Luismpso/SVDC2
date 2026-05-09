@@ -26,6 +26,9 @@ const WAR_START = new Date('2026-02-28');
 // Fração de ano: 2023 + 11/12 ≈ 2023.917 — usado em drawFlows()
 const HOUTHI_X = 2023 + 11/12;
 
+// Invasão da Ucrânia (24 fev 2022) — marcador adicional para drawFlows()
+const UCRANIA_X = 2022 + 1.8/12;   // ~24 fev = 0.15 do ano
+
 // Trimestre marcador para "1.º semestre 2025" (1H2025) — meio de 1H = ~mar 2025 = 0.25 do ano
 const Q1H2025 = 2025.25;
 
@@ -397,7 +400,7 @@ async function drawFlows() {
     .attr('preserveAspectRatio', 'xMidYMid meet');
 
   // Carrega CSV "long-format-friendly" e pivota
-  const raw = await d3.csv('data/processed/chokepoints_overview.csv');
+  const raw = await d3.csv('data/processed/chokepoints.csv');
 
   // Descobrir colunas temporais dinamicamente do header do CSV.
   // Aceita: ano completo "2020", semestre "1H2025", trimestre "1Q2026".
@@ -517,19 +520,26 @@ async function drawFlows() {
       .text(LABELS[s.name]);
   });
 
-  // Anotação para os ataques Houthi — escalada Nov 2023 (cf. const HOUTHI_X)
-  const xHouthi = x(HOUTHI_X);
-  svg.append('line')
-    .attr('class', 'war-line')
-    .attr('x1', xHouthi).attr('x2', xHouthi)
-    .attr('y1', margin.top).attr('y2', height - margin.bottom)
-    .attr('opacity', 0.5);
-  svg.append('text')
-    .attr('class', 'war-label')
-    .attr('x', xHouthi - 6).attr('y', margin.top + 14)
-    .attr('text-anchor', 'end')
-    .attr('opacity', 0.7)
-    .text('Ataques Houthi (nov 2023)');
+  // Marcadores de eventos — Ucrânia 2022 + Houthi 2023 (dentro do domínio 2018-2025+)
+  const MARKERS = [
+    { x: UCRANIA_X, label: 'Ucrânia (fev 2022)',    anchor: 'start', dx: 6  },
+    { x: HOUTHI_X,  label: 'Ataques Houthi (nov 2023)', anchor: 'end', dx: -6 }
+  ];
+  MARKERS.forEach(m => {
+    if (m.x < xMin || m.x > xMax) return;
+    const xm = x(m.x);
+    svg.append('line')
+      .attr('class', 'war-line')
+      .attr('x1', xm).attr('x2', xm)
+      .attr('y1', margin.top).attr('y2', height - margin.bottom)
+      .attr('opacity', 0.45);
+    svg.append('text')
+      .attr('class', 'war-label')
+      .attr('x', xm + m.dx).attr('y', margin.top + 14)
+      .attr('text-anchor', m.anchor)
+      .attr('opacity', 0.7)
+      .text(m.label);
+  });
 }
 
 
@@ -563,7 +573,7 @@ async function drawDestinations() {
   // NOTA: quando o destino tem o mesmo nome da região (caso "Europa,Europa"),
   // o Sankey cria um link region→country que é um self-loop e d3-sankey@0.12
   // não suporta ciclos — sufixamos o destino para garantir que é um nó distinto.
-  const raw = await d3.csv('data/processed/hormuz_destinations.csv', d => ({
+  const raw = await d3.csv('data/processed/hormuz.csv', d => ({
     destination: d.destination === d.region ? `${d.destination} (UE)` : d.destination,
     region: d.region,
     share: +d.share_percent,
@@ -903,115 +913,101 @@ async function drawPrices() {
 }
 
 
-/* ---------- 6. INFLAÇÃO — SMALL MULTIPLES (Secção IV) ---------- */
+/* ---------- 6. INFLAÇÃO — SMALL MULTIPLES (Secção IV) ----------
+   Fonte: Eurostat HICP (taxa de variação anual, mensal) — api/inflacao.py
+   Schema: { date: Date, Total, Alimentacao, Energia, Transportes }
+   ============================================================== */
 
 async function drawInflation() {
   const container = document.getElementById('chart-inflation');
   const containerWidth = container.clientWidth;
 
-  // Carregar via LiveData (PORDATA CSV — fonte estável 1960–2025)
+  // Carregar via LiveData (Eurostat CSV — taxa de variação anual mensal)
   const ineRes = await LiveData.inflation();
   if (window.LiveStatus) window.LiveStatus.report('Inflação', ineRes);
 
-  // Filtrar para 2000+ (storytelling moderno)
-  const data = ineRes.data.filter(d => d.ano >= 2000);
+  // Filtrar para 2005+ (cobre crise 2008, Líbia 2011, Ucrânia 2022, guerra Irão 2026)
+  const minDate = new Date('2005-01-01');
+  const data = ineRes.data
+    .filter(d => d.date instanceof Date && !isNaN(d.date) && d.date >= minDate)
+    .sort((a, b) => a.date - b.date);
 
-  // Pré-compilar Map para lookup O(1) no hover (em vez de Array.find linear)
-  const dataByYear = new Map(data.map(d => [d.ano, d]));
+  // Map para lookup O(1) por mês (chave: yyyy-mm)
+  const monthKey = d => `${d.date.getFullYear()}-${String(d.date.getMonth() + 1).padStart(2, '0')}`;
+  const dataByMonth = new Map(data.map(d => [monthKey(d), d]));
 
-  // Classes a mostrar (em ordem narrativa) — exclui "Total exceto..." e "Informação e comunicação"
-  // (tem muitos valores em 0/missing nos primeiros anos)
-  const CLASSES = [
-    'Total',
-    'Transportes',                                                 // ← destaque
-    'Habitação, água, eletricidade, gás e outros combustíveis',
-    'Produtos alimentares e bebidas não alcoólicas',
-    'Bebidas alcoólicas e tabaco',
-    'Vestuário e calçado',
-    'Acessórios para o lar e equipamento doméstico',
-    'Saúde',
-    'Lazer, recreação, desporto e cultura',
-    'Serviços de educação'
-  ];
-
+  // 4 classes (ordem narrativa) — Transportes em destaque (mais sensível ao petróleo)
+  const CLASSES = ['Total', 'Transportes', 'Energia', 'Alimentacao'];
   const SHORT_LABEL = {
-    'Total':                                                        'Total IPC',
-    'Transportes':                                                  'Transportes',
-    'Habitação, água, eletricidade, gás e outros combustíveis':     'Habitação e energia',
-    'Produtos alimentares e bebidas não alcoólicas':                'Alimentação',
-    'Bebidas alcoólicas e tabaco':                                  'Álcool e tabaco',
-    'Vestuário e calçado':                                          'Vestuário',
-    'Acessórios para o lar e equipamento doméstico':                'Equipamento doméstico',
-    'Saúde':                                                        'Saúde',
-    'Lazer, recreação, desporto e cultura':                         'Lazer e cultura',
-    'Serviços de educação':                                         'Educação'
+    Total:        'Total IPC',
+    Transportes:  'Transportes',
+    Energia:      'Energia',
+    Alimentacao:  'Alimentação'
   };
 
-  // Layout — 5 colunas × 2 linhas (responsivo: 2 cols em telas pequenas)
-  const cols = containerWidth < 700 ? 2 : (containerWidth < 1000 ? 3 : 5);
+  // Layout: 4 painéis lado-a-lado em desktop, 2×2 em ecrãs estreitos
+  const cols = containerWidth < 700 ? 2 : 4;
   const rows = Math.ceil(CLASSES.length / cols);
   const gap = 16;
   const cellW = (containerWidth - (cols - 1) * gap) / cols;
-  const cellH = 130;
-  const totalH = rows * cellH + (rows - 1) * gap + 30;
-  const margin = { top: 30, right: 8, bottom: 22, left: 28 };
+  const cellH = 180;
+  const totalH = rows * cellH + (rows - 1) * gap + 36;
+  const margin = { top: 28, right: 8, bottom: 24, left: 32 };
 
   const svg = d3.select(container).append('svg')
     .attr('viewBox', `0 0 ${containerWidth} ${totalH}`)
     .attr('preserveAspectRatio', 'xMidYMid meet');
 
-  // Escala global Y comum — para comparabilidade entre painéis
-  const allValues = data.flatMap(d => CLASSES.map(c => d[c])).filter(v => v != null && !isNaN(v));
+  // Escala Y global para comparabilidade — todas as séries no mesmo plano
+  const allValues = data.flatMap(d => CLASSES.map(c => d[c]))
+                        .filter(v => v != null && !isNaN(v));
   const yExt = d3.extent(allValues);
-  const yPad = 0.15 * (yExt[1] - yExt[0]);
+  const yPad = 0.10 * (yExt[1] - yExt[0]);
 
-  const xScale = d3.scaleLinear()
-    .domain(d3.extent(data, d => d.ano))
+  const xScale = d3.scaleTime()
+    .domain(d3.extent(data, d => d.date))
     .range([margin.left, cellW - margin.right]);
 
   const yScale = d3.scaleLinear()
     .domain([Math.min(yExt[0] - yPad, -2), yExt[1] + yPad]).nice()
     .range([cellH - margin.bottom, margin.top]);
 
-  // Eventos relevantes para anotação
+  // Eventos — guerras / crises com impacto no preço da energia
   const EVENTS = [
-    { year: 2008, label: 'Crise 2008' },
-    { year: 2022, label: 'Ucrânia' },
-    { year: 2026, label: 'Irão' }
-  ];
+    { date: new Date('2008-09-15'), label: 'Lehman' },
+    { date: new Date('2011-03-19'), label: 'Líbia' },
+    { date: new Date('2022-02-24'), label: 'Ucrânia' },
+    { date: new Date('2023-11-19'), label: 'Houthi' },
+    { date: WAR_START,              label: 'Irão' }
+  ].filter(e => e.date >= minDate);
 
-  // Gerar painel para cada classe
   CLASSES.forEach((cls, i) => {
     const row = Math.floor(i / cols);
     const col = i % cols;
     const xOff = col * (cellW + gap);
-    const yOff = row * (cellH + gap) + 30;
+    const yOff = row * (cellH + gap) + 36;
 
     const g = svg.append('g')
       .attr('transform', `translate(${xOff}, ${yOff})`)
       .attr('class', cls === 'Transportes' ? 'sm sm--highlight' : 'sm');
 
-    // Fundo subtil para o painel destacado
     if (cls === 'Transportes') {
       g.append('rect')
         .attr('x', 0).attr('y', 0)
         .attr('width', cellW).attr('height', cellH)
-        .attr('fill', COLORS.amber)
-        .attr('opacity', 0.06)
-        .attr('rx', 2);
+        .attr('fill', COLORS.amber).attr('opacity', 0.06).attr('rx', 2);
     }
 
     // Linha de zero
     g.append('line')
       .attr('x1', margin.left).attr('x2', cellW - margin.right)
       .attr('y1', yScale(0)).attr('y2', yScale(0))
-      .attr('stroke', COLORS.inkDim)
-      .attr('stroke-opacity', 0.3)
+      .attr('stroke', COLORS.inkDim).attr('stroke-opacity', 0.3)
       .attr('stroke-dasharray', '2 3');
 
-    // Linhas verticais para eventos (apenas se dentro do domínio)
+    // Linhas verticais dos eventos
     EVENTS.forEach(e => {
-      const xe = xScale(e.year);
+      const xe = xScale(e.date);
       g.append('line')
         .attr('x1', xe).attr('x2', xe)
         .attr('y1', margin.top).attr('y2', cellH - margin.bottom)
@@ -1020,10 +1016,9 @@ async function drawInflation() {
         .attr('stroke-width', 1);
     });
 
-    // Linha da série
     const lineGen = d3.line()
       .defined(d => d[cls] != null && !isNaN(d[cls]))
-      .x(d => xScale(d.ano))
+      .x(d => xScale(d.date))
       .y(d => yScale(d[cls]))
       .curve(d3.curveMonotoneX);
 
@@ -1035,45 +1030,54 @@ async function drawInflation() {
       .attr('fill', 'none')
       .attr('stroke', strokeColor)
       .attr('stroke-width', isHighlight ? 2.2 : 1.4)
-      .attr('opacity', isHighlight ? 1 : 0.7)
+      .attr('opacity', isHighlight ? 1 : 0.75)
       .attr('d', lineGen);
 
-    // Animação de entrada
     const len = path.node().getTotalLength();
     path.attr('stroke-dasharray', `${len} ${len}`)
         .attr('stroke-dashoffset', len)
-        .transition().duration(900).delay(i * 60).ease(d3.easeQuadOut)
+        .transition().duration(1100).delay(i * 80).ease(d3.easeQuadOut)
         .attr('stroke-dashoffset', 0);
 
-    // Eixos minimal
+    // Eixo Y
     g.append('g')
       .attr('transform', `translate(${margin.left}, 0)`)
-      .call(d3.axisLeft(yScale).ticks(3).tickFormat(d => d + '%').tickSize(0))
+      .call(d3.axisLeft(yScale).ticks(4).tickFormat(d => d + '%').tickSize(0))
       .call(s => s.select('.domain').remove())
       .call(s => s.selectAll('text').attr('fill', COLORS.inkDim).style('font-size', '9px'));
 
+    // Eixo X — anos a cada ~5 anos
     g.append('g')
       .attr('transform', `translate(0, ${cellH - margin.bottom})`)
-      .call(d3.axisBottom(xScale).ticks(3).tickFormat(d3.format('d')).tickSize(0))
+      .call(d3.axisBottom(xScale).ticks(d3.timeYear.every(5)).tickFormat(d3.timeFormat('%Y')).tickSize(0))
       .call(s => s.select('.domain').remove())
       .call(s => s.selectAll('text').attr('fill', COLORS.inkDim).style('font-size', '9px'));
 
     // Título do painel
     g.append('text')
-      .attr('x', margin.left)
-      .attr('y', 16)
+      .attr('x', margin.left).attr('y', 16)
       .attr('fill', isHighlight ? COLORS.amberHot : COLORS.ink)
       .style('font-family', 'Fraunces, serif')
       .style('font-size', '12px')
       .style('font-weight', isHighlight ? 600 : 500)
       .text(SHORT_LABEL[cls]);
 
-    // Hover focus — tracking dot
+    // Valor mais recente — chip à direita
+    const last = [...data].reverse().find(d => d[cls] != null && !isNaN(d[cls]));
+    if (last) {
+      g.append('text')
+        .attr('x', cellW - margin.right).attr('y', 16)
+        .attr('text-anchor', 'end')
+        .attr('fill', COLORS.inkDim)
+        .style('font-family', 'JetBrains Mono, monospace')
+        .style('font-size', '10px')
+        .text(`${last[cls].toFixed(1)}% · ${d3.timeFormat('%b %Y')(last.date)}`);
+    }
+
+    // Hover
     const focus = g.append('circle')
-      .attr('r', 3.5)
-      .attr('fill', strokeColor)
-      .style('opacity', 0)
-      .style('pointer-events', 'none');
+      .attr('r', 3.5).attr('fill', strokeColor)
+      .style('opacity', 0).style('pointer-events', 'none');
 
     g.append('rect')
       .attr('x', margin.left).attr('y', margin.top)
@@ -1082,19 +1086,20 @@ async function drawInflation() {
       .attr('fill', 'transparent')
       .on('mousemove', (event) => {
         const [mx] = d3.pointer(event);
-        const ano = Math.round(xScale.invert(mx));
-        const row_ = dataByYear.get(ano);   // O(1) — Map em vez de Array.find
+        const date = xScale.invert(mx);
+        const key  = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const row_ = dataByMonth.get(key);
         if (!row_ || row_[cls] == null) return;
-        focus.attr('cx', xScale(row_.ano)).attr('cy', yScale(row_[cls])).style('opacity', 1);
+        focus.attr('cx', xScale(row_.date)).attr('cy', yScale(row_[cls])).style('opacity', 1);
         showTooltip(event,
-          `<strong>${SHORT_LABEL[cls]}</strong>${row_.ano}: ${row_[cls].toFixed(1)}%`);
+          `<strong>${SHORT_LABEL[cls]}</strong>` +
+          `${d3.timeFormat('%b %Y')(row_.date)}: ${row_[cls].toFixed(1)}%`);
       })
       .on('mouseleave', () => { focus.style('opacity', 0); hideTooltip(); });
   });
 
-  // Legenda com os 3 eventos
-  const legend = svg.append('g')
-    .attr('transform', `translate(0, 16)`);
+  // Legenda dos eventos no topo
+  const legend = svg.append('g').attr('transform', 'translate(0, 18)');
   EVENTS.forEach((e, i) => {
     const lg = legend.append('g').attr('transform', `translate(${i * 110}, 0)`);
     lg.append('line').attr('x2', 14).attr('y1', 5).attr('y2', 5)
@@ -1103,7 +1108,7 @@ async function drawInflation() {
       .attr('fill', COLORS.inkDim)
       .style('font-family', 'JetBrains Mono, monospace')
       .style('font-size', '10px')
-      .text(`${e.year} · ${e.label}`);
+      .text(`${e.date.getFullYear()} · ${e.label}`);
   });
 }
 
