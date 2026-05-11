@@ -1,0 +1,11 @@
+# Dependências dos scripts em api/
+# Sincronizado com .github/workflows/update.yml
+
+pandas>=2.0
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=4.9          # backend de pd.read_html em api/fluxos.py
+html5lib>=1.1      # backend alternativo para HTML mal-formado
+openpyxl>=3.1      # leitura de .xlsx (data/raw/dgeg.xlsx)
+yfinance>=0.2      # api/brent.py
+urllib3>=1.26      # api/combustiveis.py (desativar warnings SSL DGEG)

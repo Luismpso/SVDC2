@@ -306,6 +306,17 @@ code { font-family: var(--font-mono); font-size: 0.85em; color: var(--teal); }
   position: relative;
 }
 
+.pull-quote__source {
+  display: block;
+  margin-top: 1rem;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-style: normal;
+  font-size: 0.7em;
+  font-weight: 500;
+  color: var(--ink-dim);
+  letter-spacing: 0.02em;
+}
+
 .chapter__outro {
   max-width: var(--measure);
   margin: 4rem auto 0;
@@ -984,4 +995,27 @@ code { font-family: var(--font-mono); font-size: 0.85em; color: var(--teal); }
 }
 @keyframes dashFlow {
   to { stroke-dashoffset: -100; }
+}
+
+/* ====================================================================
+   ACESSIBILIDADE — utilizadores com preferência por movimento reduzido
+   Desativa animações longas e mantém os elementos visíveis no estado
+   final (em vez de saltar a animação e ficar invisível).
+   ==================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Garantir que rotas, halos e fluxos contínuos param */
+  .reroute-arc path,
+  .route--flowing,
+  .livebar__pulse {
+    animation: none !important;
+  }
+  /* Halos pulsantes em SVG (atributo animate) — não há forma 100% via CSS,
+     mas pelo menos garantimos que os keyframes globais ficam congelados. */
 }

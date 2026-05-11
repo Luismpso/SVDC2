@@ -22,13 +22,6 @@
 // Usada como linha vertical de referência em vários gráficos
 const WAR_START = new Date('2026-02-28');
 
-// Ataques Houthi começaram em ~mid-Nov 2023 e escalaram em Dez 2023.
-// Fração de ano: 2023 + 11/12 ≈ 2023.917 — usado em drawFlows()
-const HOUTHI_X = 2023 + 11/12;
-
-// Trimestre marcador para "1.º semestre 2025" (1H2025) — meio de 1H = ~mar 2025 = 0.25 do ano
-const Q1H2025 = 2025.25;
-
 // Paleta — devolvida pelo CSS para manter coerência com o tema
 const css = getComputedStyle(document.documentElement);
 const COLORS = {
@@ -192,9 +185,27 @@ async function drawMap() {
   const mal = projection(malacaCp.coords);
   const cab = projection(cabo.coords);
 
-  // Helper: cubic Bezier
-  const bezier = (x1, y1, cx1, cy1, cx2, cy2, x2, y2) =>
-    `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+  // Helper 1: arco quadrático "bowado" para sul (lado mais marítimo).
+  // bow = quanto a curva se afasta da reta direta, em fração da corda.
+  function arc(p1, p2, bow = 0.20) {
+    const mx = (p1[0] + p2[0]) / 2;
+    const chord = Math.hypot(p2[0]-p1[0], p2[1]-p1[1]);
+    const cx = mx;
+    const cy = (p1[1] + p2[1]) / 2 + chord * bow;
+    const midX = 0.25 * p1[0] + 0.5 * cx + 0.25 * p2[0];
+    const midY = 0.25 * p1[1] + 0.5 * cy + 0.25 * p2[1];
+    return { d: `M ${p1[0]} ${p1[1]} Q ${cx} ${cy} ${p2[0]} ${p2[1]}`, mid: [midX, midY] };
+  }
+
+  // Helper 2: curva que passa por um waypoint (control point arbitrário).
+  // Útil quando a rota tem um chokepoint intermédio real (ex.: Suez via Bab).
+  function arcVia(p1, p2, waypoint, offsetY = 0) {
+    const cx = waypoint[0];
+    const cy = waypoint[1] + offsetY;
+    const midX = 0.25 * p1[0] + 0.5 * cx + 0.25 * p2[0];
+    const midY = 0.25 * p1[1] + 0.5 * cy + 0.25 * p2[1];
+    return { d: `M ${p1[0]} ${p1[1]} Q ${cx} ${cy} ${p2[0]} ${p2[1]}`, mid: [midX, midY] };
+  }
 
   // Gradientes: cada rota nasce em amber-hot (em Ormuz) e desvanece
   // para uma cor que liga ao destino — Suez/teal, Malaca/amber, Cabo/rust.
@@ -211,28 +222,36 @@ async function drawMap() {
   addGradient('grad-suez',   orm, sue, COLORS.amberHot, COLORS.teal);
   addGradient('grad-cabo',   orm, cab, COLORS.amberHot, COLORS.rust);
 
-  // Definições das rotas (path + label) — ordem é a ordem de revelação
+  // Geometrias:
+  // Malaca: arco suave a sul de Índia (rota tanker padrão).
+  // Suez:   passa explicitamente por Bab el-Mandeb (waypoint REAL — tankers
+  //         contornam a Arábia, descem o Mar Arábico, sobem o Mar Vermelho).
+  // Cabo:   bow pequeno, a rota já é longa-sul.
+  const bab = projection([43.3, 12.6]);
+  const arcMalaca = arc(orm, mal, 0.16);
+  const arcSuez   = arcVia(orm, sue, bab, 18);   // 18px abaixo de Bab para "passar por baixo"
+  const arcCabo   = arc(orm, cab, 0.10);
+
+  // Definições das rotas — etiquetas em sítios livres de chokepoints/terra
   const ROUTES = [
     {
-      id: 'malaca',
-      d: bezier(orm[0], orm[1], orm[0]+90, orm[1]+30, mal[0]-90, mal[1]-30, mal[0], mal[1]),
-      grad: 'grad-malaca',
-      label: { x: (orm[0]+mal[0])/2 + 12, y: (orm[1]+mal[1])/2 + 28,
-               color: COLORS.amber, text: '89% → Ásia via Malaca' }
+      id: 'malaca', d: arcMalaca.d, grad: 'grad-malaca',
+      label: { x: arcMalaca.mid[0],      y: arcMalaca.mid[1] + 22,
+               color: COLORS.amber, anchor: 'middle',
+               text: '89% → Ásia via Malaca' }
     },
     {
-      id: 'suez',
-      d: bezier(orm[0], orm[1], orm[0]-15, orm[1]+55, sue[0]+25, sue[1]+75, sue[0], sue[1]),
-      grad: 'grad-suez',
-      label: { x: (orm[0]+sue[0])/2 + 4, y: (orm[1]+sue[1])/2 + 60,
-               color: COLORS.teal, text: '→ Europa via Suez' }
+      id: 'suez', d: arcSuez.d, grad: 'grad-suez',
+      // Etiqueta sobre o Mediterrâneo (NW do Suez), longe de Bab el-Mandeb
+      label: { x: sue[0] - 24,           y: sue[1] - 22,
+               color: COLORS.teal, anchor: 'end',
+               text: '→ Europa via Suez' }
     },
     {
-      id: 'cabo',
-      d: bezier(orm[0], orm[1], orm[0]-60, orm[1]+80, cab[0]+80, cab[1]-60, cab[0], cab[1]),
-      grad: 'grad-cabo',
-      label: { x: (orm[0]+cab[0])/2 + 30, y: (orm[1]+cab[1])/2 + 30,
-               color: COLORS.amberHot, text: '+15 dias por África' }
+      id: 'cabo', d: arcCabo.d, grad: 'grad-cabo',
+      label: { x: arcCabo.mid[0],        y: arcCabo.mid[1] + 22,
+               color: COLORS.amberHot, anchor: 'middle',
+               text: '+15 dias por África' }
     }
   ];
 
@@ -255,7 +274,7 @@ async function drawMap() {
     routesGroup.append('text')
       .attr('class', `route-label route-label--${r.id}`)
       .attr('x', r.label.x).attr('y', r.label.y)
-      .attr('text-anchor', 'middle')
+      .attr('text-anchor', r.label.anchor || 'middle')
       .attr('fill', r.label.color)
       .style('font-family', 'JetBrains Mono, monospace')
       .style('font-size', '10.5px')
@@ -389,80 +408,63 @@ async function drawMap() {
 async function drawFlows() {
   const container = document.getElementById('chart-flows');
   const width = container.clientWidth;
-  const height = 420;
-  const margin = { top: 30, right: 140, bottom: 50, left: 50 };
+  const height = 460;
+  // Right margin generoso para 8 etiquetas no fim das linhas
+  const margin = { top: 30, right: 200, bottom: 50, left: 50 };
 
   const svg = d3.select(container).append('svg')
     .attr('viewBox', `0 0 ${width} ${height}`)
     .attr('preserveAspectRatio', 'xMidYMid meet');
 
-  // Carrega CSV "long-format-friendly" e pivota
-  const raw = await d3.csv('data/processed/chokepoints_overview.csv');
+  // Carrega CSV em formato LONG: date, periodo_original, chokepoint, value
+  const raw = await d3.csv('data/processed/chokepoints.csv', d => ({
+    date: new Date(d.date),
+    periodLabel: d.periodo_original,
+    chokepoint: d.chokepoint,
+    value: +d.value
+  }));
 
-  // Descobrir colunas temporais dinamicamente do header do CSV.
-  // Aceita: ano completo "2020", semestre "1H2025", trimestre "1Q2026".
-  // Quando a EIA publicar 2025 (ano cheio), 2H2025, 1H2026, 1Q2026, etc.,
-  // o gráfico actualiza-se sozinho — basta correr api/fluxos.py.
-  const periodCols = raw.columns.filter(c => /^(\d{4}|\d[HQ]\d{4})$/.test(c));
+  // Hierarquia visual: primárias (3px, vivas) > secundárias (2px) > terciárias (1.2px, esbatidas).
+  // Cada rota tem um peso narrativo diferente para a história da guerra do Irão.
+  const SERIES = [
+    { en: 'Strait of Hormuz',                pt: 'Estreito de Ormuz',        color: COLORS.amber,    weight: 'primary'   },
+    { en: 'Cape of Good Hope',               pt: 'Cabo da Boa Esperança',    color: COLORS.ink,      weight: 'primary'   },
+    { en: 'Bab el-Mandeb',                   pt: 'Bab el-Mandeb',            color: COLORS.rust,     weight: 'secondary' },
+    { en: 'Suez Canal and SUMED Pipeline',   pt: 'Suez / SUMED',             color: COLORS.teal,     weight: 'secondary' },
+    { en: 'Strait of Malacca',               pt: 'Estreito de Malaca',       color: '#a8a092',       weight: 'tertiary'  },
+    { en: 'Danish Straits',                  pt: 'Estreitos Dinamarq.',      color: '#6f8a92',       weight: 'tertiary'  },
+    { en: 'Turkish Straits (Dardanelles)',   pt: 'Estreitos Turcos',         color: '#8a7e6f',       weight: 'tertiary'  },
+    { en: 'Panama Canal',                    pt: 'Canal do Panamá',          color: '#7a7268',       weight: 'tertiary'  },
+  ];
+  const STROKE_W = { primary: 3, secondary: 2, tertiary: 1.2 };
+  const OPACITY  = { primary: 1, secondary: 0.95, tertiary: 0.72 };
 
-  // Converte um período para um valor numérico no eixo X
-  // Ano "2020" → 2020 (1 jan); "1H2025" → 2025.25 (meio do 1º semestre);
-  // "1Q2026" → 2026.125 (meio do Q1); etc.
-  const periodToYear = (p) => {
-    const yearOnly = p.match(/^(\d{4})$/);
-    if (yearOnly) return +yearOnly[1];
-    const half = p.match(/^([12])H(\d{4})$/);
-    if (half) return +half[2] + (half[1] === '1' ? 0.25 : 0.75);
-    const qtr = p.match(/^([1-4])Q(\d{4})$/);
-    if (qtr) return +qtr[2] + (+qtr[1] - 1) * 0.25 + 0.125;
-    return NaN;
-  };
-  // Etiqueta curta do tick (ex.: "2023", "1H25", "Q1 26")
-  const periodLabel = (p) => {
-    if (/^\d{4}$/.test(p)) return p;
-    const m = p.match(/^(\d[HQ])(\d{2})(\d{2})$/);   // ex.: "1H2025" → ["1H","20","25"]
-    return m ? `${m[1]}${m[3]}` : p;
-  };
-
-  const yearCols = periodCols;
-  const yearVals = yearCols.map(periodToYear);
-
-  // Apenas as 4 séries mais relevantes para o storytelling
-  const FOCUS = ['Strait of Hormuz','Bab el-Mandeb','Suez Canal and SUMED Pipeline','Cape of Good Hope'];
-  const LABELS = {
-    'Strait of Hormuz':                'Estreito de Ormuz',
-    'Bab el-Mandeb':                   'Bab el-Mandeb',
-    'Suez Canal and SUMED Pipeline':   'Suez / SUMED',
-    'Cape of Good Hope':               'Cabo da Boa Esperança'
-  };
-  const SERIES_COLOR = {
-    'Strait of Hormuz':                COLORS.amber,
-    'Bab el-Mandeb':                   COLORS.rust,
-    'Suez Canal and SUMED Pipeline':   COLORS.teal,
-    'Cape of Good Hope':               COLORS.ink
-  };
-
-  const series = raw
-    .filter(r => FOCUS.includes(r.chokepoint))
-    .map(r => ({
-      name: r.chokepoint,
-      values: yearCols.map((c, i) => ({
-        year: yearVals[i], value: +r[c], periodLabel: c
-      })).filter(d => !isNaN(d.value))
+  // Pivota long → series: agrupa por chokepoint, ordena por data
+  const byCp = d3.group(raw, d => d.chokepoint);
+  const series = SERIES
+    .filter(s => byCp.has(s.en))
+    .map(s => ({
+      ...s,
+      values: byCp.get(s.en).slice().sort((a, b) => a.date - b.date),
     }));
 
-  // Domínio do X: do primeiro ao último período + uma pequena margem para a legenda
-  const xMin = Math.floor(d3.min(yearVals));
-  const xMax = d3.max(yearVals);
-  const x = d3.scaleLinear().domain([xMin, xMax + 0.4]).range([margin.left, width - margin.right]);
-  const y = d3.scaleLinear().domain([0, 25]).nice().range([height - margin.bottom, margin.top]);
+  // Domínio temporal: prolongar até pouco depois da guerra para mostrar a anotação,
+  // mesmo que ainda não existam dados nesse período.
+  const allDates = raw.map(r => r.date);
+  const xMin = d3.min(allDates);
+  const xMaxData = d3.max(allDates);
+  const xMaxWar  = new Date('2026-06-30');               // espaço para a label da guerra
+  const xMax     = xMaxData > xMaxWar ? xMaxData : xMaxWar;
 
-  // Eixo X: tick em cada período presente no CSV, etiqueta curta para semestre/trimestre
+  const x = d3.scaleTime().domain([xMin, xMax])
+    .range([margin.left, width - margin.right]);
+  const y = d3.scaleLinear().domain([0, 26]).nice()
+    .range([height - margin.bottom, margin.top]);
+
+  // Eixo X: ticks por ano
   svg.append('g').attr('class', 'axis axis--x')
     .attr('transform', `translate(0,${height - margin.bottom})`)
-    .call(d3.axisBottom(x)
-      .tickValues(yearVals)
-      .tickFormat((v, i) => periodLabel(yearCols[i])));
+    .call(d3.axisBottom(x).ticks(d3.timeYear.every(1)).tickFormat(d3.timeFormat('%Y')));
 
   svg.append('g').attr('class', 'axis axis--y')
     .attr('transform', `translate(${margin.left},0)`)
@@ -477,59 +479,348 @@ async function drawFlows() {
 
   // Linhas
   const line = d3.line()
-    .x(d => x(d.year))
+    .x(d => x(d.date))
     .y(d => y(d.value))
     .curve(d3.curveMonotoneX);
 
-  const g = svg.append('g');
+  const linesGroup = svg.append('g').attr('class', 'flow-lines');
+
+  // ===== Hover-to-highlight: aclara a série focada, esmaece as outras =====
+  function highlight(focusEn) {
+    linesGroup.selectAll('.flow-line').style('opacity', function () {
+      return this.__name === focusEn ? 1 : 0.18;
+    });
+    linesGroup.selectAll('.flow-label').style('opacity', function () {
+      return this.__name === focusEn ? 1 : 0.25;
+    });
+  }
+  function unhighlight() {
+    linesGroup.selectAll('.flow-line').style('opacity', function () {
+      return OPACITY[this.__weight];
+    });
+    linesGroup.selectAll('.flow-label').style('opacity', 1);
+  }
 
   series.forEach(s => {
-    g.append('path')
+    const path = linesGroup.append('path')
       .datum(s.values)
+      .attr('class', `flow-line flow-line--${s.weight}`)
       .attr('fill', 'none')
-      .attr('stroke', SERIES_COLOR[s.name])
-      .attr('stroke-width', s.name === 'Strait of Hormuz' ? 3 : 2)
-      .attr('d', line)
+      .attr('stroke', s.color)
+      .attr('stroke-width', STROKE_W[s.weight])
       .attr('opacity', 0)
-        .transition().duration(900).delay(300)
-        .attr('opacity', 1);
+      .attr('d', line);
+    path.node().__name = s.en;
+    path.node().__weight = s.weight;
+    path.on('mouseenter', () => highlight(s.en))
+        .on('mouseleave', unhighlight);
 
-    // Pontos
-    g.append('g').selectAll('circle')
-      .data(s.values)
-      .enter().append('circle')
-        .attr('cx', d => x(d.year))
-        .attr('cy', d => y(d.value))
-        .attr('r', 3)
-        .attr('fill', SERIES_COLOR[s.name])
-        .on('mouseenter', (e, d) => showTooltip(e,
-          `<strong>${LABELS[s.name]}</strong>${d.periodLabel}: ${d.value.toFixed(1)} mb/d`))
-        .on('mouseleave', hideTooltip);
+    path.transition().duration(900).delay(300)
+        .attr('opacity', OPACITY[s.weight]);
 
-    // Etiqueta no fim de cada linha
-    const last = s.values[s.values.length - 1];
-    g.append('text')
-      .attr('x', x(last.year) + 8)
-      .attr('y', y(last.value) + 4)
-      .attr('fill', SERIES_COLOR[s.name])
-      .style('font-family', 'JetBrains Mono, monospace')
-      .style('font-size', '11px')
-      .text(LABELS[s.name]);
+    // Pontos só para séries primárias e secundárias (terciárias eram ruído)
+    if (s.weight !== 'tertiary') {
+      linesGroup.append('g').selectAll('circle')
+        .data(s.values)
+        .enter().append('circle')
+          .attr('cx', d => x(d.date))
+          .attr('cy', d => y(d.value))
+          .attr('r', s.weight === 'primary' ? 3 : 2.5)
+          .attr('fill', s.color)
+          .attr('opacity', OPACITY[s.weight])
+          .on('mouseenter', (e, d) => {
+            highlight(s.en);
+            showTooltip(e, `<strong>${s.pt}</strong>${d.periodLabel}: ${d.value.toFixed(1)} mb/d`);
+          })
+          .on('mouseleave', () => { hideTooltip(); unhighlight(); });
+    }
   });
 
-  // Anotação para os ataques Houthi — escalada Nov 2023 (cf. const HOUTHI_X)
-  const xHouthi = x(HOUTHI_X);
-  svg.append('line')
-    .attr('class', 'war-line')
-    .attr('x1', xHouthi).attr('x2', xHouthi)
-    .attr('y1', margin.top).attr('y2', height - margin.bottom)
-    .attr('opacity', 0.5);
-  svg.append('text')
-    .attr('class', 'war-label')
-    .attr('x', xHouthi - 6).attr('y', margin.top + 14)
+  // ===== Etiquetas no fim das linhas com colisão evitada =====
+  // 1. Calcula a posição-alvo de cada etiqueta (Y do último ponto)
+  // 2. Ordena por Y crescente (do topo do gráfico para baixo)
+  // 3. Empurra cada uma para baixo se estiver demasiado perto da anterior
+  const MIN_GAP = 14;
+  const labels = series.map(s => {
+    const last = s.values[s.values.length - 1];
+    return {
+      en: s.en, pt: s.pt, color: s.color, weight: s.weight,
+      xLast: x(last.date),
+      yTarget: y(last.value),
+      y: y(last.value),
+    };
+  }).sort((a, b) => a.yTarget - b.yTarget);
+
+  let prevY = -Infinity;
+  labels.forEach(l => {
+    l.y = Math.max(l.yTarget, prevY + MIN_GAP);
+    prevY = l.y;
+  });
+
+  labels.forEach(l => {
+    // Linha-guia subtil entre o último ponto e a etiqueta deslocada
+    if (Math.abs(l.y - l.yTarget) > 2) {
+      linesGroup.append('line')
+        .attr('class', 'flow-leader')
+        .attr('x1', l.xLast + 2).attr('y1', l.yTarget)
+        .attr('x2', l.xLast + 10).attr('y2', l.y)
+        .attr('stroke', l.color).attr('stroke-width', 0.7)
+        .attr('opacity', 0.4);
+    }
+    const text = linesGroup.append('text')
+      .attr('class', `flow-label flow-label--${l.weight}`)
+      .attr('x', l.xLast + 12).attr('y', l.y + 4)
+      .attr('fill', l.color)
+      .style('font-family', 'JetBrains Mono, monospace')
+      .style('font-size', l.weight === 'tertiary' ? '10px' : '11px')
+      .style('opacity', l.weight === 'tertiary' ? 0.78 : 1)
+      .text(l.pt);
+    text.node().__name = l.en;
+    text.on('mouseenter', () => highlight(l.en))
+        .on('mouseleave', unhighlight);
+  });
+
+  // ===== Anotações verticais: Houthi 2023 + Guerra Irão 2026 =====
+  function annotate(date, label, color = COLORS.rust, anchor = 'end') {
+    const xPos = x(date);
+    svg.append('line')
+      .attr('class', 'war-line')
+      .attr('x1', xPos).attr('x2', xPos)
+      .attr('y1', margin.top).attr('y2', height - margin.bottom)
+      .attr('stroke', color)
+      .attr('opacity', 0.55);
+    svg.append('text')
+      .attr('class', 'war-label')
+      .attr('x', anchor === 'end' ? xPos - 6 : xPos + 6)
+      .attr('y', margin.top + 14)
+      .attr('text-anchor', anchor)
+      .attr('fill', color)
+      .attr('opacity', 0.85)
+      .text(label);
+  }
+
+  annotate(new Date('2023-11-15'), 'Ataques Houthi (nov 2023)', COLORS.rust, 'end');
+  annotate(WAR_START,                'Guerra Irão (28 fev 2026)', COLORS.amberHot, 'start');
+}
+
+
+/* ---------- 3.5 PORTAGENS NOS CHOKEPOINTS (Secção II½) ----------
+ * Visualização que compara os 5 principais chokepoints petrolíferos
+ * quanto a se cobram portagem aos navios em trânsito, quanto cobram,
+ * e qual é o estatuto legal (UNCLOS vs. tratados específicos).
+ *
+ * Os dados aqui NÃO vêm de uma série temporal — são "snapshot" de
+ * factos públicos extraídos de notícias e tratados, com data e fonte:
+ *
+ *  • Ormuz: Bloomberg/AA/Iran International (Mar 2026)
+ *  • Suez:  Suez Canal Authority (tarifário oficial)
+ *  • Panamá: Panama Canal Authority (tarifário oficial)
+ *  • Estreitos Turcos: Convenção de Montreux (1936), tarifário Turkstrait
+ *  • Malaca: The Diplomat / Foreign Policy / Lowy Inst. (Abr 2026)
+ */
+async function drawTolls() {
+  const container = document.getElementById('chart-tolls');
+  if (!container) return;
+  if (window.LiveStatus) window.LiveStatus.report('Portagens', { live: true, source: 'Notícias + tratados (Mai 2026)' });
+
+  const width = container.clientWidth;
+  const margin = { top: 30, right: 320, bottom: 50, left: 200 };
+  const rowH = 64;
+
+  // Status:
+  //   legitimate → tarifário com base jurídica clara
+  //   imposed    → portagem aplicada pelo estado costeiro mas contestada (UNCLOS Art. 26)
+  //   rejected   → proposta abandonada/recusada
+  const TOLLS = [
+    {
+      name: 'Estreito de Ormuz',
+      toll: 1500000, status: 'imposed',
+      type: 'Estreito natural',
+      legal: 'UNCLOS Art. 26 proíbe portagens em estreitos de navegação internacional',
+      since: 'Mar 2026',
+      detail: 'Parlamento iraniano aprovou lei a 26 Mar; BC já recebeu “primeira receita” a 23 Abr.',
+      source: 'Bloomberg, Iran Intl., AA News'
+    },
+    {
+      name: 'Estreito de Malaca',
+      toll: 0, status: 'rejected',
+      type: 'Estreito natural',
+      legal: 'UNCLOS — Singapura e Malásia recusaram em 24h',
+      since: 'Abr 2026 (recusada)',
+      detail: 'Min. Finanças indonésio Purbaya propôs taxa a 22 Abr; recuou no dia seguinte.',
+      source: 'The Diplomat, Lowy Institute'
+    },
+    {
+      name: 'Canal do Suez',
+      toll: 700000, status: 'legitimate',
+      type: 'Canal construído',
+      legal: 'Soberania egípcia — canal artificial fora do regime UNCLOS de estreitos',
+      since: 'desde 1869',
+      detail: 'VLCC com carga típica paga $300k–$1M consoante direção e tonelagem.',
+      source: 'Suez Canal Authority'
+    },
+    {
+      name: 'Canal do Panamá',
+      toll: 500000, status: 'legitimate',
+      type: 'Canal construído',
+      legal: 'Soberania panamiana — canal artificial',
+      since: 'desde 1914',
+      detail: 'Aumentos recentes desde 2024 pela seca no lago Gatún.',
+      source: 'Panama Canal Authority'
+    },
+    {
+      name: 'Estreitos Turcos',
+      toll: 100000, status: 'legitimate',
+      type: 'Estreito natural',
+      legal: 'Convenção de Montreux (1936) — regime especial pré-UNCLOS',
+      since: 'desde 1936',
+      detail: 'Taxa por tonelagem (~$0,95/ton). Cobrada à passagem para o Mar Negro.',
+      source: 'Convenção de Montreux'
+    },
+  ];
+
+  const height = margin.top + margin.bottom + TOLLS.length * rowH;
+
+  const svg = d3.select(container).append('svg')
+    .attr('viewBox', `0 0 ${width} ${height}`)
+    .attr('preserveAspectRatio', 'xMidYMid meet');
+
+  // Escala X: linear até $1.6M com padding para a etiqueta de valor caber
+  const xMax = d3.max(TOLLS, d => d.toll);
+  const x = d3.scaleLinear()
+    .domain([0, xMax * 1.18])
+    .range([margin.left, width - margin.right]);
+
+  const y = d3.scaleBand()
+    .domain(TOLLS.map(d => d.name))
+    .range([margin.top, height - margin.bottom])
+    .padding(0.35);
+
+  // Cores por status
+  const STATUS_COLOR = {
+    'imposed':    COLORS.rust,
+    'rejected':   COLORS.inkDim,
+    'legitimate': COLORS.teal,
+  };
+  const STATUS_LABEL = {
+    'imposed':    '⚠ Imposta · contestada',
+    'rejected':   '✕ Proposta · recusada',
+    'legitimate': '✓ Base jurídica clara',
+  };
+
+  // Eixo X em cima — formato em milhares/milhões de USD
+  const xAxis = svg.append('g')
+    .attr('class', 'axis axis--x')
+    .attr('transform', `translate(0, ${margin.top - 8})`)
+    .call(d3.axisTop(x)
+      .ticks(5)
+      .tickFormat(d => d === 0 ? '$0' : d >= 1e6 ? `$${(d/1e6).toFixed(1)}M` : `$${(d/1000).toFixed(0)}k`)
+      .tickSize(-(height - margin.top - margin.bottom)));
+  xAxis.selectAll('line').attr('stroke-opacity', 0.1);
+  xAxis.select('.domain').remove();
+
+  // (Sem subtítulo inline — o figcaption por baixo do SVG já explica
+  //  que os valores são estimativas em USD por petroleiro VLCC.)
+
+  // Linhas + barras + textos
+  const row = svg.selectAll('g.toll-row')
+    .data(TOLLS)
+    .enter().append('g')
+      .attr('class', 'toll-row')
+      .attr('transform', d => `translate(0, ${y(d.name)})`);
+
+  // Nome do chokepoint (à esquerda)
+  row.append('text')
+    .attr('x', margin.left - 12)
+    .attr('y', y.bandwidth() / 2 - 2)
     .attr('text-anchor', 'end')
-    .attr('opacity', 0.7)
-    .text('Ataques Houthi (nov 2023)');
+    .attr('fill', COLORS.ink)
+    .style('font-family', 'Fraunces, serif')
+    .style('font-size', '15px')
+    .style('font-weight', 600)
+    .text(d => d.name);
+
+  // Tipo (canal vs estreito)
+  row.append('text')
+    .attr('x', margin.left - 12)
+    .attr('y', y.bandwidth() / 2 + 14)
+    .attr('text-anchor', 'end')
+    .attr('fill', COLORS.inkDim)
+    .style('font-family', 'JetBrains Mono, monospace')
+    .style('font-size', '10px')
+    .text(d => d.type);
+
+  // Bar
+  row.append('rect')
+    .attr('x', margin.left)
+    .attr('y', 6)
+    .attr('height', y.bandwidth() - 12)
+    .attr('width', 0)   // animação
+    .attr('fill', d => STATUS_COLOR[d.status])
+    .attr('opacity', d => d.status === 'rejected' ? 0.35 : 0.85)
+    .attr('rx', 2)
+    .on('mouseenter', function (e, d) {
+      d3.select(this).attr('opacity', 1);
+      const tollTxt = d.toll === 0 ? 'sem portagem' :
+        d.toll >= 1e6 ? `$${(d.toll/1e6).toFixed(1)}M/navio` :
+        `$${(d.toll/1000).toFixed(0)}k/navio`;
+      showTooltip(e,
+        `<strong>${d.name} · ${tollTxt}</strong>` +
+        `${d.detail}<br>` +
+        `<span style="opacity:.75">${d.legal}</span><br>` +
+        `<span style="opacity:.55;font-size:10px">Fonte: ${d.source}</span>`);
+    })
+    .on('mousemove', (e) => tooltip
+      .style('left', (e.pageX + 14) + 'px').style('top', (e.pageY - 10) + 'px'))
+    .on('mouseleave', function (e, d) {
+      d3.select(this).attr('opacity', d.status === 'rejected' ? 0.35 : 0.85);
+      hideTooltip();
+    })
+    .transition().duration(900).delay((d, i) => i * 100).ease(d3.easeQuadOut)
+    .attr('width', d => Math.max(2, x(d.toll) - margin.left));
+
+  // Valor à direita do bar
+  row.append('text')
+    .attr('class', 'toll-value')
+    .attr('x', d => x(d.toll) + 8)
+    .attr('y', y.bandwidth() / 2 + 2)
+    .attr('fill', d => STATUS_COLOR[d.status])
+    .style('font-family', 'JetBrains Mono, monospace')
+    .style('font-size', '13px')
+    .style('font-weight', 500)
+    .style('opacity', 0)
+    .text(d => d.toll === 0 ? 'recusada'
+              : d.toll >= 1e6 ? `≈ $${(d.toll/1e6).toFixed(1)}M`
+              : `≈ $${(d.toll/1000).toFixed(0)}k`)
+    .transition().duration(400).delay((d, i) => 900 + i * 100)
+    .style('opacity', 1);
+
+  // Estatuto legal + ano (à direita do valor)
+  row.append('text')
+    .attr('x', width - margin.right + 8)
+    .attr('y', y.bandwidth() / 2 - 2)
+    .attr('fill', d => STATUS_COLOR[d.status])
+    .style('font-family', 'JetBrains Mono, monospace')
+    .style('font-size', '10px')
+    .style('font-weight', 500)
+    .text(d => STATUS_LABEL[d.status]);
+
+  row.append('text')
+    .attr('x', width - margin.right + 8)
+    .attr('y', y.bandwidth() / 2 + 12)
+    .attr('fill', COLORS.inkDim)
+    .style('font-family', 'JetBrains Mono, monospace')
+    .style('font-size', '10px')
+    .text(d => d.since);
+
+  // Rodapé com a nota editorial
+  svg.append('text')
+    .attr('x', margin.left)
+    .attr('y', height - 12)
+    .attr('fill', COLORS.inkDim)
+    .style('font-family', 'JetBrains Mono, monospace')
+    .style('font-size', '10px')
+    .text('Canais artificiais cobram legalmente. Estreitos naturais não — exceto Montreux. O Irão é o 1.º a tentar.');
 }
 
 
@@ -563,7 +854,7 @@ async function drawDestinations() {
   // NOTA: quando o destino tem o mesmo nome da região (caso "Europa,Europa"),
   // o Sankey cria um link region→country que é um self-loop e d3-sankey@0.12
   // não suporta ciclos — sufixamos o destino para garantir que é um nó distinto.
-  const raw = await d3.csv('data/processed/hormuz_destinations.csv', d => ({
+  const raw = await d3.csv('data/processed/hormuz.csv', d => ({
     destination: d.destination === d.region ? `${d.destination} (UE)` : d.destination,
     region: d.region,
     share: +d.share_percent,
@@ -829,11 +1120,11 @@ async function drawPrices() {
 
   const lineDiesel = d3.line()
     .x(d => x(d.date)).y(d => yFuel(d.gasoleo))
-    .curve(d3.curveMonotoneX);
+    .curve(d3.curveStepAfter); 
 
   const lineGas = d3.line()
     .x(d => x(d.date)).y(d => yFuel(d.gasolina))
-    .curve(d3.curveMonotoneX);
+    .curve(d3.curveStepAfter);
 
   const drawLineAnimated = (path, totalDuration = 1500) => {
     const len = path.node().getTotalLength();
@@ -914,59 +1205,49 @@ async function drawInflation() {
   if (window.LiveStatus) window.LiveStatus.report('Inflação', ineRes);
 
   // Filtrar para 2000+ (storytelling moderno)
-  const data = ineRes.data.filter(d => d.ano >= 2000);
+  // O CSV tem: date (Date), Total, Alimentacao, Energia, Transportes (números)
+  const data = ineRes.data
+    .filter(d => d.date && d.date.getFullYear() >= 2000)
+    .sort((a, b) => a.date - b.date);
 
-  // Pré-compilar Map para lookup O(1) no hover (em vez de Array.find linear)
-  const dataByYear = new Map(data.map(d => [d.ano, d]));
-
-  // Classes a mostrar (em ordem narrativa) — exclui "Total exceto..." e "Informação e comunicação"
-  // (tem muitos valores em 0/missing nos primeiros anos)
+  // 4 classes — o que está no CSV processado pelo api/inflacao.py
+  // (anteriormente havia 10 classes hardcoded com nomes longos do PORDATA,
+  //  mas o CSV atual vem do Eurostat HICP e tem apenas estas 4)
   const CLASSES = [
     'Total',
-    'Transportes',                                                 // ← destaque
-    'Habitação, água, eletricidade, gás e outros combustíveis',
-    'Produtos alimentares e bebidas não alcoólicas',
-    'Bebidas alcoólicas e tabaco',
-    'Vestuário e calçado',
-    'Acessórios para o lar e equipamento doméstico',
-    'Saúde',
-    'Lazer, recreação, desporto e cultura',
-    'Serviços de educação'
+    'Transportes',   // ← classe destacada (mais sensível ao petróleo)
+    'Energia',
+    'Alimentacao',
   ];
-
   const SHORT_LABEL = {
-    'Total':                                                        'Total IPC',
-    'Transportes':                                                  'Transportes',
-    'Habitação, água, eletricidade, gás e outros combustíveis':     'Habitação e energia',
-    'Produtos alimentares e bebidas não alcoólicas':                'Alimentação',
-    'Bebidas alcoólicas e tabaco':                                  'Álcool e tabaco',
-    'Vestuário e calçado':                                          'Vestuário',
-    'Acessórios para o lar e equipamento doméstico':                'Equipamento doméstico',
-    'Saúde':                                                        'Saúde',
-    'Lazer, recreação, desporto e cultura':                         'Lazer e cultura',
-    'Serviços de educação':                                         'Educação'
+    'Total':       'Total IPC',
+    'Transportes': 'Transportes',
+    'Energia':     'Energia',
+    'Alimentacao': 'Alimentação',
   };
 
-  // Layout — 5 colunas × 2 linhas (responsivo: 2 cols em telas pequenas)
-  const cols = containerWidth < 700 ? 2 : (containerWidth < 1000 ? 3 : 5);
+  // Layout — 4 painéis em linha em ecrãs largos, 2x2 em ecrãs estreitos
+  const cols = containerWidth < 700 ? 2 : 4;
   const rows = Math.ceil(CLASSES.length / cols);
   const gap = 16;
   const cellW = (containerWidth - (cols - 1) * gap) / cols;
-  const cellH = 130;
-  const totalH = rows * cellH + (rows - 1) * gap + 30;
-  const margin = { top: 30, right: 8, bottom: 22, left: 28 };
+  const cellH = 170;
+  const totalH = rows * cellH + (rows - 1) * gap + 40;
+  const margin = { top: 36, right: 10, bottom: 26, left: 32 };
 
   const svg = d3.select(container).append('svg')
     .attr('viewBox', `0 0 ${containerWidth} ${totalH}`)
     .attr('preserveAspectRatio', 'xMidYMid meet');
 
   // Escala global Y comum — para comparabilidade entre painéis
-  const allValues = data.flatMap(d => CLASSES.map(c => d[c])).filter(v => v != null && !isNaN(v));
+  const allValues = data.flatMap(d => CLASSES.map(c => d[c]))
+    .filter(v => v != null && !isNaN(v));
   const yExt = d3.extent(allValues);
-  const yPad = 0.15 * (yExt[1] - yExt[0]);
+  const yPad = 0.1 * (yExt[1] - yExt[0]);
 
-  const xScale = d3.scaleLinear()
-    .domain(d3.extent(data, d => d.ano))
+  // X mensal (Date), Y comum em pontos percentuais
+  const xScale = d3.scaleTime()
+    .domain(d3.extent(data, d => d.date))
     .range([margin.left, cellW - margin.right]);
 
   const yScale = d3.scaleLinear()
@@ -975,9 +1256,9 @@ async function drawInflation() {
 
   // Eventos relevantes para anotação
   const EVENTS = [
-    { year: 2008, label: 'Crise 2008' },
-    { year: 2022, label: 'Ucrânia' },
-    { year: 2026, label: 'Irão' }
+    { date: new Date('2008-09-15'), label: 'Crise 2008' },
+    { date: new Date('2022-02-24'), label: 'Ucrânia' },
+    { date: WAR_START,              label: 'Irão' },
   ];
 
   // Gerar painel para cada classe
@@ -985,7 +1266,7 @@ async function drawInflation() {
     const row = Math.floor(i / cols);
     const col = i % cols;
     const xOff = col * (cellW + gap);
-    const yOff = row * (cellH + gap) + 30;
+    const yOff = row * (cellH + gap) + 36;
 
     const g = svg.append('g')
       .attr('transform', `translate(${xOff}, ${yOff})`)
@@ -1009,9 +1290,10 @@ async function drawInflation() {
       .attr('stroke-opacity', 0.3)
       .attr('stroke-dasharray', '2 3');
 
-    // Linhas verticais para eventos (apenas se dentro do domínio)
+    // Linhas verticais para eventos
     EVENTS.forEach(e => {
-      const xe = xScale(e.year);
+      const xe = xScale(e.date);
+      if (xe < margin.left || xe > cellW - margin.right) return;
       g.append('line')
         .attr('x1', xe).attr('x2', xe)
         .attr('y1', margin.top).attr('y2', cellH - margin.bottom)
@@ -1023,7 +1305,7 @@ async function drawInflation() {
     // Linha da série
     const lineGen = d3.line()
       .defined(d => d[cls] != null && !isNaN(d[cls]))
-      .x(d => xScale(d.ano))
+      .x(d => xScale(d.date))
       .y(d => yScale(d[cls]))
       .curve(d3.curveMonotoneX);
 
@@ -1042,33 +1324,48 @@ async function drawInflation() {
     const len = path.node().getTotalLength();
     path.attr('stroke-dasharray', `${len} ${len}`)
         .attr('stroke-dashoffset', len)
-        .transition().duration(900).delay(i * 60).ease(d3.easeQuadOut)
+        .transition().duration(900).delay(i * 80).ease(d3.easeQuadOut)
         .attr('stroke-dashoffset', 0);
 
     // Eixos minimal
     g.append('g')
       .attr('transform', `translate(${margin.left}, 0)`)
-      .call(d3.axisLeft(yScale).ticks(3).tickFormat(d => d + '%').tickSize(0))
+      .call(d3.axisLeft(yScale).ticks(4).tickFormat(d => d + '%').tickSize(0))
       .call(s => s.select('.domain').remove())
       .call(s => s.selectAll('text').attr('fill', COLORS.inkDim).style('font-size', '9px'));
 
     g.append('g')
       .attr('transform', `translate(0, ${cellH - margin.bottom})`)
-      .call(d3.axisBottom(xScale).ticks(3).tickFormat(d3.format('d')).tickSize(0))
+      .call(d3.axisBottom(xScale).ticks(d3.timeYear.every(5)).tickFormat(d3.timeFormat('%Y')).tickSize(0))
       .call(s => s.select('.domain').remove())
       .call(s => s.selectAll('text').attr('fill', COLORS.inkDim).style('font-size', '9px'));
 
     // Título do painel
     g.append('text')
       .attr('x', margin.left)
-      .attr('y', 16)
+      .attr('y', 18)
       .attr('fill', isHighlight ? COLORS.amberHot : COLORS.ink)
       .style('font-family', 'Fraunces, serif')
-      .style('font-size', '12px')
+      .style('font-size', '13px')
       .style('font-weight', isHighlight ? 600 : 500)
       .text(SHORT_LABEL[cls]);
 
-    // Hover focus — tracking dot
+    // Valor mais recente (em cima à direita)
+    const latest = [...data].reverse().find(d => d[cls] != null && !isNaN(d[cls]));
+    if (latest) {
+      g.append('text')
+        .attr('x', cellW - margin.right)
+        .attr('y', 18)
+        .attr('text-anchor', 'end')
+        .attr('fill', isHighlight ? COLORS.amberHot : COLORS.inkDim)
+        .style('font-family', 'JetBrains Mono, monospace')
+        .style('font-size', '11px')
+        .style('font-weight', 500)
+        .text(`${latest[cls].toFixed(1)}% · ${d3.timeFormat('%b %Y')(latest.date)}`);
+    }
+
+    // Hover — encontrar ponto mais próximo no tempo
+    const bisect = d3.bisector(d => d.date).left;
     const focus = g.append('circle')
       .attr('r', 3.5)
       .attr('fill', strokeColor)
@@ -1082,12 +1379,13 @@ async function drawInflation() {
       .attr('fill', 'transparent')
       .on('mousemove', (event) => {
         const [mx] = d3.pointer(event);
-        const ano = Math.round(xScale.invert(mx));
-        const row_ = dataByYear.get(ano);   // O(1) — Map em vez de Array.find
-        if (!row_ || row_[cls] == null) return;
-        focus.attr('cx', xScale(row_.ano)).attr('cy', yScale(row_[cls])).style('opacity', 1);
+        const dateAtX = xScale.invert(mx);
+        const idx = bisect(data, dateAtX);
+        const row_ = data[Math.min(idx, data.length - 1)];
+        if (!row_ || row_[cls] == null || isNaN(row_[cls])) return;
+        focus.attr('cx', xScale(row_.date)).attr('cy', yScale(row_[cls])).style('opacity', 1);
         showTooltip(event,
-          `<strong>${SHORT_LABEL[cls]}</strong>${row_.ano}: ${row_[cls].toFixed(1)}%`);
+          `<strong>${SHORT_LABEL[cls]}</strong>${d3.timeFormat('%b %Y')(row_.date)}: ${row_[cls].toFixed(1)}%`);
       })
       .on('mouseleave', () => { focus.style('opacity', 0); hideTooltip(); });
   });
@@ -1096,22 +1394,74 @@ async function drawInflation() {
   const legend = svg.append('g')
     .attr('transform', `translate(0, 16)`);
   EVENTS.forEach((e, i) => {
-    const lg = legend.append('g').attr('transform', `translate(${i * 110}, 0)`);
+    const lg = legend.append('g').attr('transform', `translate(${i * 120}, 0)`);
     lg.append('line').attr('x2', 14).attr('y1', 5).attr('y2', 5)
       .attr('stroke', COLORS.rust).attr('stroke-width', 1.5);
     lg.append('text').attr('x', 20).attr('y', 9)
       .attr('fill', COLORS.inkDim)
       .style('font-family', 'JetBrains Mono, monospace')
       .style('font-size', '10px')
-      .text(`${e.year} · ${e.label}`);
+      .text(`${e.date.getFullYear()} · ${e.label}`);
   });
 }
 
 
 /* ---------- 7b. CONTADORES ANIMADOS DO HERO ---------- */
 
-// Anima cada elemento .stat__value de 0 → data-count-to em ~1.4s.
-// Suporta data-prefix, data-suffix e data-decimals.
+// Antes de animar, tenta calcular o impacto REAL a partir dos CSV ao vivo,
+// para o hero nunca ficar fora-de-sincronia com o resto da página.
+//
+//   Brent (%)    = média (WAR_START → últimos 60d) ÷ média (60d pré-guerra) − 1
+//   Gasóleo (€) = última observação − última observação ANTES da guerra
+//
+// Se a leitura dos CSV falhar, fica o data-count-to já presente no HTML
+// como fallback (valor editorial).
+async function refreshHeroFromLiveData() {
+  const fmtEurNum = v => v.toFixed(2).replace('.', ',');
+
+  // --- Brent ---
+  try {
+    const res = await LiveData.brent();
+    const rows = (res?.data || []).filter(d => d.date instanceof Date && !isNaN(d.value));
+    if (rows.length) {
+      const ms = 24 * 3600 * 1000;
+      const preStart  = new Date(WAR_START.getTime() - 60 * ms);
+      const postEnd   = new Date(WAR_START.getTime() + 120 * ms);
+      const pre  = rows.filter(d => d.date >= preStart && d.date <  WAR_START).map(d => d.value);
+      const post = rows.filter(d => d.date >= WAR_START && d.date <= postEnd).map(d => d.value);
+      if (pre.length && post.length) {
+        const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+        const pct  = ((mean(post) / mean(pre)) - 1) * 100;
+        const el = document.getElementById('hero-stat-brent');
+        const lbl = document.getElementById('hero-label-brent');
+        if (el) el.dataset.countTo = Math.max(0, pct).toFixed(0);
+        if (lbl) lbl.textContent = `Brent crude — média pós-guerra vs pré (60d)`;
+      }
+    }
+  } catch (e) { console.warn('[hero] brent falhou', e); }
+
+  // --- Gasóleo ---
+  try {
+    const res = await LiveData.fuel();
+    const rows = (res?.data || []).filter(d => d.date instanceof Date && !isNaN(d.gasoleo));
+    if (rows.length) {
+      const before = [...rows].reverse().find(d => d.date < WAR_START);
+      const latest = rows[rows.length - 1];
+      if (before && latest) {
+        const diff = latest.gasoleo - before.gasoleo;
+        const el  = document.getElementById('hero-stat-fuel');
+        const lbl = document.getElementById('hero-label-fuel');
+        if (el) {
+          el.dataset.countTo = Math.max(0, diff).toFixed(2);
+          // Mudar prefixo se a diferença for negativa (improvável mas seguro)
+          el.dataset.prefix = diff >= 0 ? '+€' : '−€';
+        }
+        if (lbl) lbl.textContent = `Gasóleo em Portugal (€${fmtEurNum(before.gasoleo)} → €${fmtEurNum(latest.gasoleo)})`;
+      }
+    }
+  } catch (e) { console.warn('[hero] gasóleo falhou', e); }
+}
+
 function initHeroCounters() {
   const stats = document.querySelectorAll('.stat__value[data-count-to]');
   if (!stats.length) return;
@@ -1139,13 +1489,14 @@ function initHeroCounters() {
 
   const hero = document.querySelector('.hero');
   if (!hero || !('IntersectionObserver' in window)) {
-    stats.forEach(animate);
+    refreshHeroFromLiveData().finally(() => stats.forEach(animate));
     return;
   }
   const io = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {
-        stats.forEach(animate);
+        // Atualiza os data-count-to com valores reais ANTES de animar.
+        refreshHeroFromLiveData().finally(() => stats.forEach(animate));
         io.disconnect();
       }
     });
@@ -1157,15 +1508,21 @@ function initHeroCounters() {
 /* ---------- 7c. CHART REVEAL — disparo lazy ao scroll ---------- */
 
 const ChartReveal = (() => {
-  const pending = new Map();
+  const pending  = new Map();   // id → drawFn (ainda não revelado)
+  const revealed = new Map();   // id → drawFn (já desenhado pelo menos uma vez)
 
   function register(containerId, drawFn) {
     pending.set(containerId, drawFn);
   }
 
+  function _markRevealed(id, fn) {
+    revealed.set(id, fn);
+  }
+
   function start() {
     if (!('IntersectionObserver' in window)) {
       pending.forEach((fn, id) => {
+        _markRevealed(id, fn);
         fn().catch(err => console.error(`[reveal:${id}]`, err));
       });
       pending.clear();
@@ -1179,6 +1536,7 @@ const ChartReveal = (() => {
         const fn = pending.get(id);
         if (!fn) return;
         pending.delete(id);
+        _markRevealed(id, fn);
         io.unobserve(e.target);
         fn().catch(err => console.error(`[reveal:${id}]`, err));
       });
@@ -1190,7 +1548,18 @@ const ChartReveal = (() => {
     });
   }
 
-  return { register, start };
+  // Re-desenha APENAS os gráficos que já foram revelados, limpando o SVG antigo.
+  // Útil no handler de resize: evita disparar drawX em containers ainda fora do
+  // viewport (mantém a otimização lazy-load).
+  function redrawRevealed() {
+    revealed.forEach((fn, id) => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+      fn().catch(err => console.error(`[redraw:${id}]`, err));
+    });
+  }
+
+  return { register, start, redrawRevealed };
 })();
 
 
@@ -1278,26 +1647,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // Cada gráfico só é desenhado quando entra no viewport
   ChartReveal.register('map-world',          drawMap);
   ChartReveal.register('chart-flows',        drawFlows);
+  ChartReveal.register('chart-tolls',        drawTolls);
   ChartReveal.register('chart-destinations', drawDestinations);
   ChartReveal.register('chart-prices',       drawPrices);
   ChartReveal.register('chart-inflation',    drawInflation);
   ChartReveal.start();
 
-  // Re-render em resize (debounced)
+  // Re-render em resize (debounced) — só os gráficos JÁ revelados.
+  // Os que ainda não entraram no viewport ficam intactos no estado pending
+  // e serão desenhados normalmente quando o utilizador chegar lá.
   let resizeTimer;
+  let lastWidth = window.innerWidth;
   window.addEventListener('resize', () => {
+    // Ignora resizes de altura puros (barra de URL móvel)
+    if (window.innerWidth === lastWidth) return;
+    lastWidth = window.innerWidth;
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      ['map-world','chart-flows','chart-destinations','chart-prices','chart-inflation']
-        .forEach(id => {
-          const el = document.getElementById(id);
-          if (el) el.innerHTML = '';
-        });
-      drawMap().catch(()=>{});
-      drawFlows().catch(()=>{});
-      drawDestinations().catch(()=>{});
-      drawPrices().catch(()=>{});
-      drawInflation().catch(()=>{});
+      ChartReveal.redrawRevealed();
     }, 200);
   });
 });

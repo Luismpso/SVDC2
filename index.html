@@ -13,7 +13,11 @@
   <meta property="og:title" content="O Preço da Guerra — Do Estreito de Ormuz à tua bomba de gasolina">
   <meta property="og:description" content="Como a crise no Médio Oriente chega à bomba de gasolina em Portugal — visualização editorial em D3.js">
   <meta property="og:site_name" content="SVDC · Universidade do Minho">
+  <meta property="og:image" content="https://luismpso.github.io/SVDC3/og-cover.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://luismpso.github.io/SVDC3/og-cover.png">
   <meta name="theme-color" content="#0a0e14">
 
   <!-- Favicon SVG inline (gota de petróleo a arder, espelha o tema âmbar) -->
@@ -60,12 +64,12 @@
 
     <div class="hero__numbers">
       <div class="stat">
-        <div class="stat__value" data-count-to="54" data-suffix="%" data-prefix="+">+0%</div>
-        <div class="stat__label">Brent crude — média Mar–Abr vs pré-guerra</div>
+        <div class="stat__value" id="hero-stat-brent" data-count-to="54" data-suffix="%" data-prefix="+">+0%</div>
+        <div class="stat__label" id="hero-label-brent">Brent crude — média Mar–Abr vs pré-guerra</div>
       </div>
       <div class="stat">
-        <div class="stat__value" data-count-to="0.39" data-decimals="2" data-prefix="+€" data-suffix="/L">+€0,00/L</div>
-        <div class="stat__label">Gasóleo em Portugal (€1,57 → €1,96)</div>
+        <div class="stat__value" id="hero-stat-fuel" data-count-to="0.39" data-decimals="2" data-prefix="+€" data-suffix="/L">+€0,00/L</div>
+        <div class="stat__label" id="hero-label-fuel">Gasóleo em Portugal (€1,57 → €1,96)</div>
       </div>
       <div class="stat">
         <div class="stat__value" data-count-to="20" data-suffix="%">0%</div>
@@ -99,7 +103,7 @@
 
     <!-- Container do mapa SVG (preenchido por D3) -->
     <figure class="viz viz--map">
-      <div id="map-world"></div>
+      <div id="map-world" role="img" aria-label="Mapa-mundo com os 8 principais chokepoints petrolíferos. O Estreito de Ormuz está destacado, com 20,9 milhões de barris/dia — cerca de 20% do consumo mundial. Três rotas saem de Ormuz: para a Ásia via Malaca, para a Europa via Suez, e o desvio alternativo pelo Cabo da Boa Esperança (+15 dias)."></div>
       <figcaption class="viz__caption">
         Volume diário de petróleo (milhões de barris/dia, 1.º semestre 2025) nos
         principais pontos de estrangulamento marítimos.
@@ -130,15 +134,65 @@
     </div>
 
     <figure class="viz">
-      <div id="chart-flows"></div>
+      <div id="chart-flows" role="img" aria-label="Gráfico de linhas com o volume de petróleo (milhões de barris/dia) transportado pelos 8 principais chokepoints petrolíferos entre 2011 e 1H2025. Linhas verticais marcam os ataques Houthi (Nov 2023) e o início da guerra Irão–EUA/Israel (28 Fev 2026). As séries primárias são Estreito de Ormuz e Cabo da Boa Esperança; secundárias Bab el-Mandeb e Suez/SUMED; terciárias Malaca, Estreitos Dinamarqueses, Estreitos Turcos e Canal do Panamá."></div>
       <figcaption class="viz__caption">
-        Volume de petróleo transportado por rota, 2020–2025.
-        Repara como o <strong>Bab el-Mandeb</strong> (Mar Vermelho) já tinha
+        Volume de petróleo transportado pelos 8 principais chokepoints,
+        2011–1H2025. Repara como o <strong>Bab el-Mandeb</strong> (Mar Vermelho) já tinha
         colapsado em 2024 com os ataques Houthi — e como o
-        <strong>Cabo da Boa Esperança</strong> absorveu o desvio.
-        <span class="viz__source">Fonte: U.S. Energy Information Administration.</span>
+        <strong>Cabo da Boa Esperança</strong> absorveu o desvio. A linha vertical
+        marca o <strong>início da guerra Irão</strong> (Fev 2026) — os dados do EIA
+        ainda não cobrem esse período (publicação prevista 2H 2026 / 1H 2027).
+        <span class="viz__source">Fonte: U.S. Energy Information Administration (live + Wayback Machine).</span>
       </figcaption>
     </figure>
+  </section>
+
+  <!-- =====================================================
+       SECÇÃO 2½ — A nova guerra das portagens
+       ===================================================== -->
+  <section class="chapter" id="cap2b">
+    <div class="chapter__intro">
+      <span class="chapter__number">II½</span>
+      <h2 class="chapter__title">A nova guerra das portagens</h2>
+      <p class="chapter__lede">
+        Em <strong>26 de março de 2026</strong>, o parlamento iraniano aprovou
+        uma lei a cobrar <strong>portagens entre 1 e 2 milhões de dólares</strong>
+        por cada navio que atravesse o Estreito de Ormuz. A 23 de abril, o Banco
+        Central do Irão já tinha recebido a “primeira receita”. É a primeira vez
+        que um estreito natural cobra portagens à escala de um canal.
+      </p>
+      <p class="chapter__lede">
+        Um mês depois, a 22 de abril, o Ministro das Finanças indonésio
+        <strong>Purbaya Sadewa</strong> sugeriu fazer o mesmo no
+        <strong>Estreito de Malaca</strong> — por onde passam 22% do comércio
+        marítimo mundial e mais de 100&nbsp;000 navios por ano. Singapura e
+        Malásia rejeitaram a ideia em 24 horas. O ministro recuou. Mas a
+        IMO classificou o caso de Ormuz como <em>“precedente perigoso”</em>.
+      </p>
+    </div>
+
+    <figure class="viz">
+      <div id="chart-tolls" role="img" aria-label="Comparação das portagens (em dólares por petroleiro VLCC) cobradas em 5 chokepoints: Ormuz 1,5 milhão (imposta, contestada), Malaca 0 (proposta recusada), Suez 700 mil, Panamá 500 mil, Estreitos Turcos 100 mil. Indica também o regime jurídico aplicável a cada um."></div>
+      <figcaption class="viz__caption">
+        Portagens cobradas (ou propostas) pelos principais chokepoints
+        petrolíferos do mundo, estimativas em USD para um petroleiro VLCC típico.
+        Os <strong>canais artificiais</strong> têm soberania clara para cobrar;
+        os <strong>estreitos naturais</strong> são protegidos pelo Artigo 26 da
+        Convenção UNCLOS — exceto os <strong>Estreitos Turcos</strong>, regidos
+        pela Convenção de Montreux desde 1936.
+        <span class="viz__source">
+          Fontes: Bloomberg, Iran International, The Diplomat, Lowy Institute,
+          Suez Canal Authority, Panama Canal Authority (Mar–Abr 2026).
+        </span>
+      </figcaption>
+    </figure>
+
+    <div class="chapter__pull-quote">
+      &ldquo;Não há acordo internacional que permita cobrar portagens em
+      estreitos internacionais. Tehran está a criar um
+      <strong>precedente perigoso</strong>.&rdquo;
+      <span class="pull-quote__source">— porta-voz da IMO, Abril 2026</span>
+    </div>
   </section>
 
   <!-- =====================================================
@@ -156,7 +210,7 @@
     </div>
 
     <figure class="viz">
-      <div id="chart-destinations"></div>
+      <div id="chart-destinations" role="img" aria-label="Diagrama de Sankey dos destinos do petróleo que sai pelo Estreito de Ormuz. 89% segue para a Ásia (China 37,7%, Índia 14,7%, Coreia do Sul 12%, Japão 10,9%). Europa recebe 5,6%, EUA 2,5%."></div>
       <figcaption class="viz__caption">
         Destinos do petróleo que transita o Estreito de Ormuz, 1.º semestre 2025.
         A largura de cada fluxo é proporcional à quota de mercado.
@@ -182,7 +236,7 @@
     </div>
 
     <figure class="viz viz--wide">
-      <div id="chart-prices"></div>
+      <div id="chart-prices" role="img" aria-label="Gráfico de linha dupla com o preço diário do petróleo Brent em dólares por barril e do gasóleo simples em Portugal em euros por litro, com a data do início da guerra Irão–EUA (28 de Fevereiro de 2026) marcada por uma linha vertical."></div>
       <figcaption class="viz__caption">
         Preço do petróleo Brent (linha laranja) e do gasóleo simples em Portugal
         (linha clara), com a data do início da guerra marcada.
@@ -192,7 +246,7 @@
 
     <!-- Pequenos múltiplos com inflação por classe -->
     <figure class="viz viz--wide">
-      <div id="chart-inflation"></div>
+      <div id="chart-inflation" role="img" aria-label="Pequenos múltiplos com a taxa de variação anual do Índice de Preços no Consumidor em Portugal por classe (Total, Transportes em destaque, Energia, Alimentação), entre 2000 e 2026. Linhas verticais marcam a crise de 2008, a invasão da Ucrânia em 2022 e a guerra Irão–EUA em 2026."></div>
       <figcaption class="viz__caption">
         Taxa de variação anual do IPC em Portugal por classe de despesa, 2000–2025.
         A classe <strong>Transportes</strong> está realçada — é a mais sensível ao preço do petróleo.
@@ -214,17 +268,17 @@
       </p>
     </div>
 
-    <div class="calculator" id="calculator">
+    <div class="calculator" id="calculator" role="region" aria-label="Calculadora pessoal do impacto da guerra no preço do combustível">
       <div class="calculator__inputs">
         <label class="input-group">
           <span class="input-group__label">Quantos km conduzes por mês?</span>
-          <input type="range" id="km-slider" min="0" max="3000" step="50" value="1000">
-          <output class="input-group__output" id="km-output">1000 km</output>
+          <input type="range" id="km-slider" min="0" max="3000" step="50" value="1000" aria-label="Quilómetros conduzidos por mês">
+          <output class="input-group__output" id="km-output" aria-live="polite">1000 km</output>
         </label>
 
         <label class="input-group">
           <span class="input-group__label">Combustível</span>
-          <select id="fuel-select">
+          <select id="fuel-select" aria-label="Tipo de combustível">
             <option value="gasoleo" selected>Gasóleo</option>
             <option value="gasolina">Gasolina 95</option>
           </select>
@@ -232,11 +286,11 @@
 
         <label class="input-group">
           <span class="input-group__label">Consumo médio (L/100km)</span>
-          <input type="number" id="consumption" min="3" max="20" step="0.1" value="6.5">
+          <input type="number" id="consumption" min="3" max="20" step="0.1" value="6.5" aria-label="Consumo médio em litros por cem quilómetros">
         </label>
       </div>
 
-      <div class="calculator__result">
+      <div class="calculator__result" role="status" aria-live="polite">
         <div class="calculator__result-label">Pagas a mais por mês</div>
         <div class="calculator__result-value" id="extra-cost">— €</div>
         <div class="calculator__result-explainer" id="extra-explain">
@@ -261,20 +315,22 @@
       <ul>
         <li><strong>Estreito de Ormuz e chokepoints globais:</strong>
           U.S. Energy Information Administration, World Oil Transit Chokepoints (Mar 2026)</li>
+        <li><strong>Portagens nos chokepoints (Secção II½):</strong>
+          Bloomberg, Iran International, The Diplomat, Lowy Institute, Aljazeera, Suez Canal Authority, Panama Canal Authority — notícias de Mar–Abr 2026</li>
         <li><strong>Preço do petróleo Brent:</strong>
-          <a href="https://stooq.com/q/d/?s=cb.f" target="_blank" rel="noopener">Stooq.com (CB.F)</a>
-          — fetch ao vivo da série diária; fallback FRED (DCOILBRENTEU) e CSV local</li>
+          <a href="https://finance.yahoo.com/quote/BZ%3DF/" target="_blank" rel="noopener">Yahoo Finance (BZ=F)</a>
+          — atualizado diariamente via GitHub Actions; fallback FRED (DCOILBRENTEU)</li>
         <li><strong>Preços de combustíveis em Portugal:</strong>
-          <a href="https://www.maisgasolina.com/estatisticas-dos-combustiveis/" target="_blank" rel="noopener">maisgasolina.com</a>
-          — médias semanais; fallback DGEG CSV</li>
-        <li><strong>Inflação:</strong> PORDATA / INE — série anual canónica (CSV)</li>
-        <li><strong>Turismo:</strong> Turismo de Portugal, Permanência de Hóspedes (NUTS 2024)</li>
+          <a href="https://precoscombustiveis.dgeg.gov.pt/" target="_blank" rel="noopener">DGEG — API PMD</a>
+          — atualizado diariamente; fallback ENSE</li>
+        <li><strong>Inflação:</strong> Eurostat HICP (PT, prc_hicp_manr) como série principal;
+          BPstat / Banco de Portugal (série 5721524) como fallback para os meses recentes que o Eurostat ainda não publicou.</li>
         <li><strong>Mapa-mundo:</strong> Natural Earth via world-atlas TopoJSON</li>
       </ul>
       <p style="margin-top:.6rem;font-size:.85em;opacity:.75">
-        Mesma fonte para histórico e atual em cada série, com cadeia de
-        proxies CORS e cache de 1 hora em <code>sessionStorage</code>.
-        Sem chaves de API.
+        Pipeline diária via GitHub Actions: scripts Python em <code>api/</code>
+        reprocessam os CSVs em <code>data/processed/</code> e o site consome-os
+        com <code>d3.csv()</code>. Sem chaves de API, sem proxies CORS.
       </p>
     </div>
     <div class="footer__meta">
@@ -288,7 +344,7 @@
   <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
   <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3"></script>
-  <script src="js/api.js?v=20260508b"></script>
-  <script src="js/main.js?v=20260508b"></script>
+  <script src="js/api.js?v=20260511"></script>
+  <script src="js/main.js?v=20260511"></script>
 </body>
 </html>

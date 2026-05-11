@@ -2,35 +2,54 @@ name: Daily Data Update
 
 on:
   schedule:
-    # Runs every day at 08:00 UTC
+    # Corre todos os dias às 08:00 UTC
     - cron: '0 8 * * *'
-  workflow_dispatch: # Allows you to run it manually from the Actions tab
+  workflow_dispatch:  # permite correr manualmente a partir do separador Actions
 
 jobs:
-  update-process:
+  update-data:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # necessário para fazer commit/push de volta ao repo
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-      
+        uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-          
+          python-version: '3.11'
+          cache: 'pip'
+
       - name: Install dependencies
         run: |
-          pip install pandas yfinance requests beautifulsoup4
-          
-      - name: Run update scripts
-        run: |
-          python brent.py
-          python combustiveis.py
-          
+          python -m pip install --upgrade pip
+          pip install pandas yfinance requests beautifulsoup4 lxml openpyxl html5lib
+
+      - name: Update Brent
+        run: python api/brent.py
+        continue-on-error: true
+
+      - name: Update combustíveis PT
+        run: python api/combustiveis.py
+        continue-on-error: true
+
+      - name: Update inflação 
+        run: python api/inflacao.py
+        continue-on-error: true
+
+      - name: Update chokepoints
+        run: python api/fluxos.py
+        continue-on-error: true
+
       - name: Commit and push changes
         run: |
-          git config --local user.email "action@github.com"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "Data Update Bot"
           git add data/processed/*.csv
-          git commit -m "Update data" || exit 0
-          git push
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "data: update $(date -u +'%Y-%m-%d')"
+            git push
+          fi

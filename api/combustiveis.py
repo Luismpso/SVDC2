@@ -1,163 +1,232 @@
+"""
+Atualização incremental do CSV de combustíveis (DGEG — PMD).
+
+Estratégia:
+  1. Lê data/processed/combustiveis.csv (já carregado com o histórico
+     exportado manualmente — utils/dgeg.py + data/raw/dgeg.csv).
+  2. Vai buscar à API DGEG os últimos N dias (com overlap de segurança
+     de 15 dias, para apanhar revisões retroativas da DGEG).
+  3. Faz merge incremental: deduplica por data, mantendo o valor mais
+     recente devolvido pela API (corrige automaticamente revisões).
+  4. Não rebenta se a API falhar: o CSV existente fica intacto.
+
+Anti-falhas:
+  - Tenta GET e depois POST, ambos com retries+backoff.
+  - Parse defensivo: aceita várias convenções de nomes (camelCase,
+    PascalCase) e várias formas de envelope JSON.
+  - Se a API devolver vazio ou falhar, sai em silêncio com aviso, sem
+    estragar o CSV.
+"""
+
 import os
+import time
 import requests
 import pandas as pd
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import urllib3
-import time
 
-# Ocultar avisos SSL comuns em sites governamentais
+# DGEG usa certificados problemáticos; silenciar avisos.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Caminho correto para correr a partir da raiz do projeto (SVDC3)
 CSV_PATH = 'data/processed/combustiveis.csv'
+API_URL = "https://precoscombustiveis.dgeg.gov.pt/api/PrecoComb/PMD"
 
-def buscar_dgeg_periodo(data_ini, data_fim):
-    """Função auxiliar para fazer o pedido à DGEG num período específico."""
-    url_api = "https://precoscombustiveis.dgeg.gov.pt/api/PrecoComb/PMD"
+# Overlap em dias: vai buscar os últimos N dias mesmo que já estejam no CSV.
+# Apanha revisões retroativas da DGEG e garante que se um dia falhar, o
+# próximo run apanha-o.
+OVERLAP_DAYS = 15
+
+# Mais retries = mais robustez. Cada tentativa espera mais um pouco.
+MAX_RETRIES = 3
+TIMEOUT_S = 30
+
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Referer': 'https://precoscombustiveis.dgeg.gov.pt/estatistica/preco-medio-diario/',
+}
+
+
+def _get_field(item, *candidates):
+    """Tenta vários nomes de campo (case-insensitive) e devolve o primeiro
+    que existir e não for vazio."""
+    # Match exato primeiro
+    for c in candidates:
+        if c in item and item[c] not in (None, ''):
+            return item[c]
+    # Match case-insensitive (fallback)
+    lowered = {k.lower(): v for k, v in item.items() if isinstance(k, str)}
+    for c in candidates:
+        v = lowered.get(c.lower())
+        if v not in (None, ''):
+            return v
+    return None
+
+
+def _parse_response(res_json):
+    """Aceita várias formas de envelope JSON e devolve uma lista de items."""
+    if isinstance(res_json, list):
+        return res_json
+    if isinstance(res_json, dict):
+        for key in ('resultado', 'Resultado', 'result', 'data', 'Data', 'items'):
+            v = res_json.get(key)
+            if isinstance(v, list):
+                return v
+        # Último recurso: se for um dict com uma única lista lá dentro, usa-a.
+        for v in res_json.values():
+            if isinstance(v, list):
+                return v
+    return []
+
+
+def _fetch_chunk(data_ini, data_fim):
+    """Vai buscar um intervalo à API, com retries. Devolve lista de items
+    ou [] se falhar."""
     params = {"dataIni": data_ini, "dataFim": data_fim}
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Origin': 'https://precoscombustiveis.dgeg.gov.pt',
-        'Referer': 'https://precoscombustiveis.dgeg.gov.pt/estatistica/preco-medio-diario/'
-    }
-    
-    response = requests.get(url_api, params=params, headers=headers, verify=False, timeout=15)
-    # Se o método GET não for permitido (405), tenta POST
-    if response.status_code == 405:
-        response = requests.post(url_api, json=params, headers=headers, verify=False, timeout=15)
-        
-    response.raise_for_status()
-    return response.json().get('resultado', [])
 
-def extrair_dgeg(historico_completo=False):
-    """Extrai da DGEG. Se historico_completo for True, saca 10 anos. Se não, saca 15 dias."""
-    print("A aceder à fonte Primária: API DGEG...")
-    resultados = []
-    
-    if historico_completo:
-        print("⚠️ Base de dados não encontrada. A iniciar extração de 10 ANOS de histórico...")
-        ano_atual = datetime.now().year
-        # Vai buscar ano a ano para o servidor do Estado não bloquear o pedido
-        for ano in range(ano_atual - 10, ano_atual + 1):
-            data_ini = f"{ano}-01-01"
-            data_fim = f"{ano}-12-31" if ano != ano_atual else datetime.now().strftime('%Y-%m-%d')
-            print(f"  -> A descarregar ano {ano}...")
-            try:
-                res = buscar_dgeg_periodo(data_ini, data_fim)
-                resultados.extend(res)
-                time.sleep(1) # Pausa amigável de 1 segundo para não sobrecarregar o servidor
-            except Exception as e:
-                print(f"     Falha ao extrair {ano}: {e}")
-    else:
-        # Modo normal diário (margem de 15 dias para segurança)
-        data_fim = datetime.now().strftime('%Y-%m-%d')
-        data_ini = (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d')
-        resultados = buscar_dgeg_periodo(data_ini, data_fim)
-        
-    # Processar o JSON resultante
-    dados_por_data = {}
-    for item in resultados:
-        data_item = str(item.get('Data', ''))[:10]
-        combustivel = str(item.get('TipoCombustivel', '')).lower()
-        preco_str = str(item.get('Preco', ''))
-        
-        if not data_item or not preco_str:
-            continue
-            
-        preco_float = float(preco_str.replace('€', '').replace(',', '.').strip())
-        if data_item not in dados_por_data:
-            dados_por_data[data_item] = {}
-            
-        if 'gasóleo' in combustivel or 'gasoleo' in combustivel:
-            if 'simples' in combustivel:
-                dados_por_data[data_item]['gasoleo_pvp_eur_l'] = preco_float
-        if 'gasolina' in combustivel:
-            if '95' in combustivel and 'simples' in combustivel:
-                dados_por_data[data_item]['gasolina95_pvp_eur_l'] = preco_float
-
-    linhas = []
-    for data, precos in dados_por_data.items():
-        if 'gasoleo_pvp_eur_l' in precos and 'gasolina95_pvp_eur_l' in precos:
-            linhas.append({
-                'date': data,
-                'gasoleo_pvp_eur_l': precos['gasoleo_pvp_eur_l'],
-                'gasolina95_pvp_eur_l': precos['gasolina95_pvp_eur_l']
-            })
-    return pd.DataFrame(linhas)
-
-def extrair_ense():
-    """Fallback: Extrai os preços de referência oficiais da ENSE usando BeautifulSoup."""
-    print("A tentar fonte Secundária: ENSE...")
-    url = "https://www.ense-epe.pt/precos-de-referencia/"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    response = requests.get(url, headers=headers, verify=False, timeout=15)
-    response.raise_for_status()
-    
-    soup = BeautifulSoup(response.text, 'html.parser')
-    tabela = soup.find('table', class_='table')
-    if not tabela: 
-        return pd.DataFrame()
-        
-    linhas = []
-    for tr in tabela.find_all('tr'):
-        tds = tr.find_all('td')
-        if len(tds) >= 3:
-            try:
-                data_iso = datetime.strptime(tds[0].text.strip(), '%d/%m/%Y').strftime('%Y-%m-%d')
-                gasolina_float = float(tds[1].text.replace('€', '').replace(',', '.').strip())
-                gasoleo_float = float(tds[2].text.replace('€', '').replace(',', '.').strip())
-                linhas.append({'date': data_iso, 'gasoleo_pvp_eur_l': gasoleo_float, 'gasolina95_pvp_eur_l': gasolina_float})
-            except Exception:
-                continue
-    return pd.DataFrame(linhas)
-
-def atualizar_combustiveis():
-    print("A iniciar pipeline DataOps de Combustíveis...")
-    df_novo = pd.DataFrame()
-    
-    # Lógica de Self-Healing: Se o ficheiro não existir, pede histórico completo (10 anos)
-    precisa_historico = not os.path.exists(CSV_PATH)
-    
-    # 1. Tentar Fonte Primária (DGEG)
-    try:
-        df_novo = extrair_dgeg(historico_completo=precisa_historico)
-        if not df_novo.empty:
-            print(f"✅ SUCESSO: {len(df_novo)} dias de dados recolhidos da DGEG!")
-    except Exception as e:
-        print(f"⚠️ A DGEG falhou: {e}")
-        
-    # 2. Tentar Fonte Secundária (só para modo diário)
-    if df_novo.empty and not precisa_historico:
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
-            df_novo = extrair_ense()
-            if not df_novo.empty:
-                print(f"✅ SUCESSO: Dados recolhidos da ENSE!")
-        except Exception as e:
-            print(f"⚠️ A ENSE também falhou: {e}")
-            
-    if df_novo.empty:
-        print("❌ ERRO CRÍTICO: Impossível aceder a fontes oficiais hoje.")
+            # Tenta GET primeiro (é o que a UI da DGEG usa).
+            r = requests.get(
+                API_URL, params=params, headers=HEADERS,
+                verify=False, timeout=TIMEOUT_S
+            )
+            if r.status_code == 405:
+                # Algumas versões da API só aceitam POST com JSON body.
+                r = requests.post(
+                    API_URL, json=params, headers=HEADERS,
+                    verify=False, timeout=TIMEOUT_S
+                )
+            r.raise_for_status()
+
+            items = _parse_response(r.json())
+            if items:
+                return items
+            print(f"  · Tentativa {attempt}: API respondeu mas sem dados.")
+        except requests.exceptions.RequestException as e:
+            print(f"  · Tentativa {attempt} falhou: {e}")
+        except ValueError as e:
+            # JSON inválido
+            print(f"  · Tentativa {attempt}: resposta não é JSON ({e}).")
+
+        if attempt < MAX_RETRIES:
+            time.sleep(2 ** attempt)  # backoff: 2s, 4s, 8s
+
+    return []
+
+
+def _items_to_dataframe(items):
+    """Converte a lista de items da API num DataFrame com as colunas que o
+    site espera (date, gasolina95_pvp_eur_l, gasoleo_pvp_eur_l)."""
+    dados = {}
+    for item in items:
+        # A API usa camelCase no preco-medio-diario, mas alguns endpoints
+        # da DGEG usam PascalCase. Tentamos ambos.
+        data_raw = _get_field(item, 'data', 'Data')
+        tipo_raw = _get_field(item, 'tipoCombustivel', 'TipoCombustivel', 'tipo')
+        preco_raw = _get_field(item, 'precoMedio', 'Preco', 'preco', 'PrecoMedio')
+
+        if not data_raw or not tipo_raw or not preco_raw:
+            continue
+
+        # Normalizar data (vem como '2026-05-10T00:00:00' ou '2026-05-10')
+        data_str = str(data_raw)[:10]
+
+        # Normalizar preço (vem como "1,9942 €" ou "1.9942" ou 1.9942)
+        preco_clean = (
+            str(preco_raw).replace('€', '').replace(',', '.').strip()
+        )
+        try:
+            preco = float(preco_clean)
+        except ValueError:
+            continue
+
+        tipo_norm = str(tipo_raw).lower().strip()
+
+        if data_str not in dados:
+            dados[data_str] = {'date': data_str}
+
+        if 'gasóleo simples' in tipo_norm or 'gasoleo simples' in tipo_norm:
+            dados[data_str]['gasoleo_pvp_eur_l'] = preco
+        elif 'gasolina simples 95' in tipo_norm:
+            dados[data_str]['gasolina95_pvp_eur_l'] = preco
+
+    return pd.DataFrame(list(dados.values()))
+
+
+def _determinar_intervalo():
+    """Decide que intervalo pedir à API com base no CSV existente."""
+    hoje = datetime.now().date()
+
+    if not os.path.exists(CSV_PATH):
+        # Sem CSV ainda — vai buscar 1 mês para arrancar (o resto vem do
+        # bootstrap manual em utils/dgeg.py).
+        data_ini = hoje - timedelta(days=30)
+        return data_ini.strftime('%Y-%m-%d'), hoje.strftime('%Y-%m-%d')
+
+    df = pd.read_csv(CSV_PATH)
+    if df.empty or 'date' not in df.columns:
+        data_ini = hoje - timedelta(days=30)
+    else:
+        ultima = pd.to_datetime(df['date']).max().date()
+        # Recuar OVERLAP_DAYS dias para apanhar revisões retroativas.
+        data_ini = ultima - timedelta(days=OVERLAP_DAYS)
+
+    return data_ini.strftime('%Y-%m-%d'), hoje.strftime('%Y-%m-%d')
+
+
+def atualizar():
+    print("→ A atualizar combustíveis (DGEG)...")
+
+    if not os.path.exists(CSV_PATH):
+        print(f"⚠️  {CSV_PATH} não existe. Corre primeiro 'python utils/dgeg.py'")
+        print(f"    para criar o histórico inicial a partir de data/raw/dgeg.csv.")
+        print(f"    Vou continuar e criar um CSV novo só com os dados da API.")
+
+    data_ini, data_fim = _determinar_intervalo()
+    print(f"  · A pedir à DGEG: {data_ini} → {data_fim}")
+
+    items = _fetch_chunk(data_ini, data_fim)
+    if not items:
+        print("⚠️  API não devolveu dados. CSV existente fica intacto.")
         return
 
-    # 3. Guardar na Base de Dados
-    try:
-        if not precisa_historico:
-            df_antigo = pd.read_csv(CSV_PATH)
-            # Fundir com os dados antigos e manter sempre os mais recentes em caso de datas iguais
-            df_final = pd.concat([df_antigo, df_novo]).drop_duplicates(subset=['date'], keep='last')
-        else:
-            df_final = df_novo
-            
-        df_final = df_final.sort_values('date')
-        os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
-        df_final.to_csv(CSV_PATH, index=False)
-        print(f"🔥 Operação concluída! CSV conta agora com {len(df_final)} dias em: {CSV_PATH}")
-        
-    except Exception as e:
-        print(f"❌ Erro ao gravar o CSV: {e}")
+    df_novos = _items_to_dataframe(items)
+    if df_novos.empty:
+        print("⚠️  API respondeu mas não consegui extrair preços válidos. CSV intacto.")
+        return
+
+    print(f"  · Recebidos {len(df_novos)} dias da API.")
+
+    # Merge com o existente (se houver).
+    if os.path.exists(CSV_PATH):
+        df_antigo = pd.read_csv(CSV_PATH)
+        df_final = pd.concat([df_antigo, df_novos], ignore_index=True)
+    else:
+        df_final = df_novos
+
+    # Garantir colunas certas e tipos certos.
+    for col in ('gasolina95_pvp_eur_l', 'gasoleo_pvp_eur_l'):
+        if col not in df_final.columns:
+            df_final[col] = pd.NA
+
+    # Dedupe por data, mantendo a versão mais recente (apanha revisões).
+    df_final = (
+        df_final
+        .drop_duplicates(subset=['date'], keep='last')
+        .sort_values('date')
+        .reset_index(drop=True)
+    )
+
+    # Reordenar colunas para bater certo com o que o site espera.
+    df_final = df_final[['date', 'gasolina95_pvp_eur_l', 'gasoleo_pvp_eur_l']]
+
+    os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
+    df_final.to_csv(CSV_PATH, index=False)
+
+    ultima_data = df_final['date'].iloc[-1]
+    print(f"✅ {CSV_PATH} atualizado: {len(df_final)} registos. Última data: {ultima_data}")
+
 
 if __name__ == "__main__":
-    atualizar_combustiveis()
+    atualizar()
