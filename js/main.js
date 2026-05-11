@@ -1194,13 +1194,16 @@ async function drawPrices() {
 }
 
 
-/* ---------- 6. INFLAÇÃO — SMALL MULTIPLES (Secção IV) ---------- */
+/* ---------- 6. INFLAÇÃO — SMALL MULTIPLES (Secção IV) ----------
+   Fonte: Eurostat HICP (taxa de variação anual, mensal) — api/inflacao.py
+   Schema: { date: Date, Total, Alimentacao, Energia, Transportes }
+   ============================================================== */
 
 async function drawInflation() {
   const container = document.getElementById('chart-inflation');
   const containerWidth = container.clientWidth;
 
-  // Carregar via LiveData (PORDATA CSV — fonte estável 1960–2025)
+  // Carregar via LiveData (Eurostat CSV — taxa de variação anual mensal)
   const ineRes = await LiveData.inflation();
   if (window.LiveStatus) window.LiveStatus.report('Inflação', ineRes);
 
@@ -1254,14 +1257,13 @@ async function drawInflation() {
     .domain([Math.min(yExt[0] - yPad, -2), yExt[1] + yPad]).nice()
     .range([cellH - margin.bottom, margin.top]);
 
-  // Eventos relevantes para anotação
+  // Eventos — guerras / crises com impacto no preço da energia
   const EVENTS = [
     { date: new Date('2008-09-15'), label: 'Crise 2008' },
     { date: new Date('2022-02-24'), label: 'Ucrânia' },
     { date: WAR_START,              label: 'Irão' },
   ];
 
-  // Gerar painel para cada classe
   CLASSES.forEach((cls, i) => {
     const row = Math.floor(i / cols);
     const col = i % cols;
@@ -1272,22 +1274,18 @@ async function drawInflation() {
       .attr('transform', `translate(${xOff}, ${yOff})`)
       .attr('class', cls === 'Transportes' ? 'sm sm--highlight' : 'sm');
 
-    // Fundo subtil para o painel destacado
     if (cls === 'Transportes') {
       g.append('rect')
         .attr('x', 0).attr('y', 0)
         .attr('width', cellW).attr('height', cellH)
-        .attr('fill', COLORS.amber)
-        .attr('opacity', 0.06)
-        .attr('rx', 2);
+        .attr('fill', COLORS.amber).attr('opacity', 0.06).attr('rx', 2);
     }
 
     // Linha de zero
     g.append('line')
       .attr('x1', margin.left).attr('x2', cellW - margin.right)
       .attr('y1', yScale(0)).attr('y2', yScale(0))
-      .attr('stroke', COLORS.inkDim)
-      .attr('stroke-opacity', 0.3)
+      .attr('stroke', COLORS.inkDim).attr('stroke-opacity', 0.3)
       .attr('stroke-dasharray', '2 3');
 
     // Linhas verticais para eventos
@@ -1302,7 +1300,6 @@ async function drawInflation() {
         .attr('stroke-width', 1);
     });
 
-    // Linha da série
     const lineGen = d3.line()
       .defined(d => d[cls] != null && !isNaN(d[cls]))
       .x(d => xScale(d.date))
@@ -1317,23 +1314,23 @@ async function drawInflation() {
       .attr('fill', 'none')
       .attr('stroke', strokeColor)
       .attr('stroke-width', isHighlight ? 2.2 : 1.4)
-      .attr('opacity', isHighlight ? 1 : 0.7)
+      .attr('opacity', isHighlight ? 1 : 0.75)
       .attr('d', lineGen);
 
-    // Animação de entrada
     const len = path.node().getTotalLength();
     path.attr('stroke-dasharray', `${len} ${len}`)
         .attr('stroke-dashoffset', len)
         .transition().duration(900).delay(i * 80).ease(d3.easeQuadOut)
         .attr('stroke-dashoffset', 0);
 
-    // Eixos minimal
+    // Eixo Y
     g.append('g')
       .attr('transform', `translate(${margin.left}, 0)`)
       .call(d3.axisLeft(yScale).ticks(4).tickFormat(d => d + '%').tickSize(0))
       .call(s => s.select('.domain').remove())
       .call(s => s.selectAll('text').attr('fill', COLORS.inkDim).style('font-size', '9px'));
 
+    // Eixo X — anos a cada ~5 anos
     g.append('g')
       .attr('transform', `translate(0, ${cellH - margin.bottom})`)
       .call(d3.axisBottom(xScale).ticks(d3.timeYear.every(5)).tickFormat(d3.timeFormat('%Y')).tickSize(0))
@@ -1367,10 +1364,8 @@ async function drawInflation() {
     // Hover — encontrar ponto mais próximo no tempo
     const bisect = d3.bisector(d => d.date).left;
     const focus = g.append('circle')
-      .attr('r', 3.5)
-      .attr('fill', strokeColor)
-      .style('opacity', 0)
-      .style('pointer-events', 'none');
+      .attr('r', 3.5).attr('fill', strokeColor)
+      .style('opacity', 0).style('pointer-events', 'none');
 
     g.append('rect')
       .attr('x', margin.left).attr('y', margin.top)
@@ -1390,9 +1385,8 @@ async function drawInflation() {
       .on('mouseleave', () => { focus.style('opacity', 0); hideTooltip(); });
   });
 
-  // Legenda com os 3 eventos
-  const legend = svg.append('g')
-    .attr('transform', `translate(0, 16)`);
+  // Legenda dos eventos no topo
+  const legend = svg.append('g').attr('transform', 'translate(0, 18)');
   EVENTS.forEach((e, i) => {
     const lg = legend.append('g').attr('transform', `translate(${i * 120}, 0)`);
     lg.append('line').attr('x2', 14).attr('y1', 5).attr('y2', 5)

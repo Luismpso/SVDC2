@@ -1,4 +1,5 @@
 """
+<<<<<<< HEAD
 Fluxos de petróleo nos chokepoints — EIA (atual) + Wayback Machine (histórico).
 
 Estratégia em duas fases:
@@ -15,6 +16,14 @@ Anti-falhas:
   - Wayback é melhor-esforço: se falhar parcialmente, usa o que conseguir.
   - Se Wayback falhar inteiramente, o live scrape ainda produz saída.
   - Cada snapshot é tentado isoladamente — uma falha não rebenta as outras.
+=======
+Fluxos de petróleo nos chokepoints — extração via EIA.
+
+Output:
+  data/processed/chokepoints.csv   → WIDE (chokepoint, 2018, 2019, … 1H2025)
+                                     formato consumido por js/main.js drawFlows()
+  data/processed/hormuz.csv        → destinos do Estreito de Ormuz (drawDestinations)
+>>>>>>> d3d9d60a50ace754d20c65cf117d6c0749c5387b
 """
 
 import os
@@ -27,8 +36,8 @@ from datetime import datetime
 import pandas as pd
 import requests
 
-CSV_OVERVIEW     = 'data/processed/chokepoints.csv'
-CSV_DESTINATIONS = 'data/processed/hormuz.csv'
+CSV_OVERVIEW       = 'data/processed/chokepoints.csv'
+CSV_DESTINATIONS   = 'data/processed/hormuz.csv'
 
 EIA_URL = ("https://www.eia.gov/international/content/analysis/"
            "special_topics/World_Oil_Transit_Chokepoints/")
@@ -45,7 +54,7 @@ WAYBACK_DELAY_S = 1.5
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    'Accept': 'text/html,application/xhtml+xml'
+    'Accept': 'text/html,application/xhtml+xml',
 }
 
 KNOWN_CHOKEPOINTS = {
@@ -54,10 +63,22 @@ KNOWN_CHOKEPOINTS = {
     'Panama Canal', 'Cape of Good Hope',
 }
 
+<<<<<<< HEAD
 
 # ---------------------------------------------------------------------------
 # Helpers de tabela (partilhados entre live e Wayback)
 # ---------------------------------------------------------------------------
+=======
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+def _fetch_eia_html() -> str:
+    r = requests.get(EIA_URL, headers=HEADERS, timeout=30)
+    r.raise_for_status()
+    return r.text
+>>>>>>> d3d9d60a50ace754d20c65cf117d6c0749c5387b
+
 
 def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
     if isinstance(df.columns, pd.MultiIndex):
@@ -75,6 +96,7 @@ def _strip_footnote(name) -> str:
     s = str(name).strip()
     if s in KNOWN_CHOKEPOINTS:
         return s
+<<<<<<< HEAD
     # Remove até 2 caracteres finais (footnotes tipo "Bab el-Mandeb a" ou similar)
     for trim in (1, 2):
         if len(s) > trim and s[:-trim].strip() in KNOWN_CHOKEPOINTS:
@@ -82,7 +104,34 @@ def _strip_footnote(name) -> str:
     return s
 
 
+=======
+    if len(s) > 1 and s[:-1] in KNOWN_CHOKEPOINTS:
+        return s[:-1]
+    return s
+
+
+def _periodo_para_data(p: str) -> str | None:
+    """'2024' → '2024-07-01'; '1H2025' → '2025-04-01'; '1Q2026' → '2026-02-15'."""
+    s = str(p).strip()
+    if re.fullmatch(r'\d{4}', s):
+        return f"{s}-07-01"
+    m = re.fullmatch(r'([12])H(\d{4})', s)
+    if m:
+        return f"{m.group(2)}-04-01" if m.group(1) == '1' else f"{m.group(2)}-10-01"
+    m = re.fullmatch(r'([1-4])Q(\d{4})', s)
+    if m:
+        mes = (int(m.group(1)) * 3) - 1
+        return f"{m.group(2)}-{mes:02d}-15"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# parsing
+# ---------------------------------------------------------------------------
+
+>>>>>>> d3d9d60a50ace754d20c65cf117d6c0749c5387b
 def _normalize_chokepoints(raw: pd.DataFrame) -> pd.DataFrame:
+    """Devolve um DF wide normalizado: index 'chokepoint' + colunas temporais."""
     raw = _flatten_columns(raw.copy())
     raw = raw.rename(columns={raw.columns[0]: 'chokepoint'})
 
@@ -137,7 +186,7 @@ def _find_chokepoints_table(html: str) -> pd.DataFrame:
         flat = _flatten_columns(t.copy())
         if flat.iloc[:, 0].astype(str).str.contains('Strait of Hormuz', regex=False).any():
             return t
-    raise ValueError("Tabela de chokepoints não encontrada")
+    raise ValueError("Tabela de chokepoints não encontrada na página da EIA.")
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +394,7 @@ def atualizar_fluxos():
         print(f"✅ {CSV_DESTINATIONS}: {len(df_dest)} destinos (snapshot atual).")
     except Exception as e:
         print(f"⚠ Falha em hormuz.csv ({e}); a continuar.")
+
 
 
 if __name__ == "__main__":

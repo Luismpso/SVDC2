@@ -60,6 +60,24 @@ def _clean(df):
     # Filtro estrito: tem de ser > 0 (apanha NaN, 0, negativos)
     df = df[df['DCOILBRENTEU'] > 0]
     df['DCOILBRENTEU'] = df['DCOILBRENTEU'].round(2)
+    df = df.reset_index(drop=True)
+
+    # Validar resultado final
+    ok, msg = _validar(df)
+    if not ok:
+        print(f"ERRO: resultado final invalido ({msg}). CSV antigo preservado.")
+        sys.exit(1)
+
+    # Anti-destrutivo
+    _verificar_nao_destrutivo(df, CSV_PATH)
+
+    # Backup + escrita
+    if os.path.exists(CSV_PATH):
+        try:
+            shutil.copy2(CSV_PATH, CSV_PATH + '.bak')
+            print(f"  -> backup em {CSV_PATH}.bak")
+        except Exception as e:
+            print(f"  - Sem backup ({e}) - a continuar.")
 
     # Limitar ao período do projeto
     df = df[df['observation_date'] >= START_DATE]
