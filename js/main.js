@@ -150,24 +150,47 @@ async function drawMap() {
 
   // ========== CHOKEPOINTS — 7 + Cabo (alternativa) ==========
   // Ordenados por valor: Malaca é o maior por volume; Ormuz é o mais crítico.
+  // O campo `en` casa com o nome usado no CSV — o `value` aqui é só fallback;
+  // o valor mostrado é sempre o ponto mais recente do CSV (ver bloco abaixo).
   const CHOKEPOINTS = [
-    { name: 'Estreito de Malaca',    coords: [101, 2.5],   value: 23.2,
+    { name: 'Estreito de Malaca',    en: 'Strait of Malacca',              coords: [101, 2.5],   value: 23.2,
       desc: 'O maior do mundo por volume — Indo-Pacífico' },
-    { name: 'Estreito de Ormuz',     coords: [56.5, 26.6], value: 20.9, main: true,
+    { name: 'Estreito de Ormuz',     en: 'Strait of Hormuz',               coords: [56.5, 26.6], value: 20.9, main: true,
       desc: '20% do consumo mundial · 33 km de largura' },
-    { name: 'Cabo da Boa Esperança', coords: [18.5, -34.5],value: 9.1,  alt: true,
+    { name: 'Cabo da Boa Esperança', en: 'Cape of Good Hope',              coords: [18.5, -34.5],value: 9.1,  alt: true,
       desc: 'Rota alternativa (+45% desde os ataques Houthi 2024)' },
-    { name: 'Suez / SUMED',          coords: [32.5, 30.0], value: 4.9,
+    { name: 'Canal do Suez',         en: 'Suez Canal and SUMED Pipeline',  coords: [32.5, 30.0], value: 4.9,
       desc: 'Canal do Suez + pipeline para o Mediterrâneo' },
-    { name: 'Estreitos Dinamarq.',   coords: [12.5, 56.0], value: 4.9,
+    { name: 'Estreitos Dinamarq.',   en: 'Danish Straits',                 coords: [12.5, 56.0], value: 4.9,
       desc: 'Saída do petróleo russo do Báltico' },
-    { name: 'Bab el-Mandeb',         coords: [43.3, 12.6], value: 4.2,
+    { name: 'Bab el-Mandeb',         en: 'Bab el-Mandeb',                  coords: [43.3, 12.6], value: 4.2,
       desc: 'Mar Vermelho — colapsou em 2024 (Houthi)' },
-    { name: 'Estreitos Turcos',      coords: [29.0, 41.0], value: 3.7,
+    { name: 'Estreitos Turcos',      en: 'Turkish Straits (Dardanelles)',  coords: [29.0, 41.0], value: 3.7,
       desc: 'Bósforo + Dardanelos — Mar Negro → Mediterrâneo' },
-    { name: 'Canal do Panamá',       coords: [-80, 9],     value: 2.3,
+    { name: 'Canal do Panamá',       en: 'Panama Canal',                   coords: [-80, 9],     value: 2.3,
       desc: 'Atlântico ↔ Pacífico (afetado pela seca em Gatún)' },
   ];
+
+  // Lê o CSV e substitui cada `value` pelo ponto mais recente disponível.
+  // Se o CSV ainda não tiver o chokepoint, fica o valor hardcoded como fallback.
+  try {
+    const cpRaw = await d3.csv('data/processed/chokepoints.csv', d => ({
+      date: new Date(d.date),
+      chokepoint: d.chokepoint,
+      value: +d.value,
+    }));
+    const latestByCp = new Map();
+    for (const row of cpRaw) {
+      const prev = latestByCp.get(row.chokepoint);
+      if (!prev || row.date > prev.date) latestByCp.set(row.chokepoint, row);
+    }
+    CHOKEPOINTS.forEach(cp => {
+      const row = latestByCp.get(cp.en);
+      if (row && Number.isFinite(row.value)) cp.value = row.value;
+    });
+  } catch (err) {
+    console.warn('[map] não consegui ler chokepoints.csv, a usar valores fallback:', err);
+  }
 
   // ========== ROTAS — rede global ao estilo EIA ==========
   // 21 rotas formam a rede densa do mapa do EIA. Cada chokepoint serve
@@ -338,7 +361,7 @@ async function drawMap() {
     'Estreito de Ormuz':     { dx:  44, dy:   2, anchor: 'start'  },  // direita — Mar Arábico
     'Estreito de Malaca':    { dx:  40, dy:   8, anchor: 'start'  },  // direita
     'Bab el-Mandeb':         { dx: -22, dy:   3, anchor: 'end'    },  // esquerda — Etiópia
-    'Suez / SUMED':          { dx: -22, dy:   3, anchor: 'end'    },  // esquerda
+    'Canal do Suez':         { dx: -22, dy:   3, anchor: 'end'    },  // esquerda
     'Estreitos Turcos':      { dx:   0, dy: -22, anchor: 'middle' },  // cima
     'Estreitos Dinamarq.':   { dx:   0, dy: -22, anchor: 'middle' },  // cima
     'Cabo da Boa Esperança': { dx:   0, dy:  30, anchor: 'middle' },  // baixo
@@ -376,13 +399,34 @@ async function drawFlows() {
     value: +d.value
   }));
 
+  // Estimativas para o período de guerra (Fev 2026 →) — NÃO são dados reais.
+  // Ancoradas no STEO de Abril 2026 do EIA: 7.5 mb/d de produção shut-in em
+  // Março, 9.1 mb/d em Abril, recuperação gradual sem regressar ao baseline
+  // até final de 2026. Só Ormuz e Cabo (as duas linhas primárias) recebem
+  // estimativa; os outros chokepoints ficariam especulação sem ganho narrativo.
+  let wartime = [];
+  try {
+    wartime = await d3.csv('data/processed/wartime.csv', d => ({
+      date: new Date(d.date),
+      periodLabel: d.periodo_original,
+      chokepoint: d.chokepoint,
+      value: +d.value,
+      value_low: +d.value_low,
+      value_high: +d.value_high,
+      nota: d.nota,
+    }));
+  } catch (err) {
+    console.warn('[flows] wartime.csv não disponível:', err);
+  }
+  const wartimeByCp = d3.group(wartime, d => d.chokepoint);
+
   // Hierarquia visual: primárias (3px, vivas) > secundárias (2px) > terciárias (1.2px, esbatidas).
   // Cada rota tem um peso narrativo diferente para a história da guerra do Irão.
   const SERIES = [
     { en: 'Strait of Hormuz',                pt: 'Estreito de Ormuz',        color: COLORS.amber,    weight: 'primary'   },
     { en: 'Cape of Good Hope',               pt: 'Cabo da Boa Esperança',    color: COLORS.ink,      weight: 'primary'   },
     { en: 'Bab el-Mandeb',                   pt: 'Bab el-Mandeb',            color: COLORS.rust,     weight: 'secondary' },
-    { en: 'Suez Canal and SUMED Pipeline',   pt: 'Suez / SUMED',             color: COLORS.teal,     weight: 'secondary' },
+    { en: 'Suez Canal and SUMED Pipeline',   pt: 'Canal do Suez',            color: COLORS.teal,     weight: 'secondary' },
     { en: 'Strait of Malacca',               pt: 'Estreito de Malaca',       color: '#a8a092',       weight: 'tertiary'  },
     { en: 'Danish Straits',                  pt: 'Estreitos Dinamarq.',      color: '#6f8a92',       weight: 'tertiary'  },
     { en: 'Turkish Straits (Dardanelles)',   pt: 'Estreitos Turcos',         color: '#8a7e6f',       weight: 'tertiary'  },
@@ -400,13 +444,14 @@ async function drawFlows() {
       values: byCp.get(s.en).slice().sort((a, b) => a.date - b.date),
     }));
 
-  // Domínio temporal: prolongar até pouco depois da guerra para mostrar a anotação,
-  // mesmo que ainda não existam dados nesse período.
+  // Domínio temporal: prolongar até depois das estimativas para o leitor
+  // ver tanto os dados reais como a faixa de incerteza pós-conflito.
   const allDates = raw.map(r => r.date);
   const xMin = d3.min(allDates);
   const xMaxData = d3.max(allDates);
-  const xMaxWar  = new Date('2026-06-30');               // espaço para a label da guerra
-  const xMax     = xMaxData > xMaxWar ? xMaxData : xMaxWar;
+  const xMaxForecast = wartime.length ? d3.max(wartime, d => d.date) : null;
+  const xMaxWar  = new Date('2027-02-28');               // espaço para labels + estimativa Q4 2026
+  const xMax     = d3.max([xMaxData, xMaxForecast, xMaxWar].filter(Boolean));
 
   const x = d3.scaleTime().domain([xMin, xMax])
     .range([margin.left, width - margin.right]);
@@ -488,13 +533,94 @@ async function drawFlows() {
     }
   });
 
+  // ===== Camada de ESTIMATIVA (pós-Fev 2026) =====
+  // Renderizada antes das etiquetas para que estas usem o último ponto
+  // estimado (não o último ponto real) para as séries com forecast.
+  // Layering: faixa de incerteza (atrás) → linha tracejada → pontos.
+  const forecastGroup = svg.append('g').attr('class', 'forecast-group');
+  const forecastBySeries = new Map();
+
+  series.forEach(s => {
+    const wt = wartimeByCp.get(s.en);
+    if (!wt || wt.length === 0) return;
+    const lastActual = s.values[s.values.length - 1];
+    // "Bridge point" — liga visualmente o último real ao primeiro estimado.
+    // Banda tem largura zero aqui (low == high == valor real) → "fan-out".
+    const bridge = {
+      date: lastActual.date,
+      value: lastActual.value,
+      value_low: lastActual.value,
+      value_high: lastActual.value,
+      periodLabel: lastActual.periodLabel,
+      isBridge: true,
+    };
+    const data = [bridge, ...wt.slice().sort((a, b) => a.date - b.date)];
+    forecastBySeries.set(s.en, { series: s, data });
+  });
+
+  const areaBand = d3.area()
+    .x(d => x(d.date))
+    .y0(d => y(d.value_low))
+    .y1(d => y(d.value_high))
+    .curve(d3.curveMonotoneX);
+
+  // Faixas de incerteza (back)
+  forecastBySeries.forEach(({ series: s, data }) => {
+    forecastGroup.append('path')
+      .datum(data)
+      .attr('class', 'forecast-band')
+      .attr('fill', s.color)
+      .attr('fill-opacity', 0)
+      .attr('d', areaBand)
+      .transition().duration(900).delay(500).attr('fill-opacity', 0.14);
+  });
+
+  // Linhas tracejadas (front das faixas)
+  forecastBySeries.forEach(({ series: s, data }) => {
+    forecastGroup.append('path')
+      .datum(data)
+      .attr('class', 'forecast-line')
+      .attr('fill', 'none')
+      .attr('stroke', s.color)
+      .attr('stroke-width', STROKE_W[s.weight])
+      .attr('stroke-opacity', 0)
+      .attr('stroke-dasharray', '6 5')
+      .attr('d', line)
+      .transition().duration(900).delay(500).attr('stroke-opacity', OPACITY[s.weight]);
+  });
+
+  // Pontos só nos períodos estimados (salta o bridge para não duplicar o real)
+  forecastBySeries.forEach(({ series: s, data }) => {
+    forecastGroup.append('g').selectAll('circle')
+      .data(data.filter(d => !d.isBridge))
+      .enter().append('circle')
+        .attr('cx', d => x(d.date))
+        .attr('cy', d => y(d.value))
+        .attr('r', s.weight === 'primary' ? 3 : 2.5)
+        .attr('fill', '#0a0e14')          // ponto vazado para distinguir do real
+        .attr('stroke', s.color)
+        .attr('stroke-width', 1.5)
+        .attr('opacity', 0)
+        .on('mouseenter', (e, d) => {
+          highlight(s.en);
+          showTooltip(e,
+            `<strong>${s.pt}</strong>${d.periodLabel} <em>(estimativa)</em>: ${d.value.toFixed(1)} mb/d`
+            + `<br><span style="opacity:.7">intervalo: ${d.value_low.toFixed(1)}–${d.value_high.toFixed(1)} mb/d</span>`
+            + (d.nota ? `<br><span style="opacity:.6;font-size:.9em">${d.nota}</span>` : ''));
+        })
+        .on('mouseleave', () => { hideTooltip(); unhighlight(); })
+        .transition().duration(600).delay(800).attr('opacity', OPACITY[s.weight]);
+  });
+
   // ===== Etiquetas no fim das linhas com colisão evitada =====
-  // 1. Calcula a posição-alvo de cada etiqueta (Y do último ponto)
+  // 1. Calcula a posição-alvo de cada etiqueta (Y do último ponto — real ou estimado)
   // 2. Ordena por Y crescente (do topo do gráfico para baixo)
   // 3. Empurra cada uma para baixo se estiver demasiado perto da anterior
   const MIN_GAP = 14;
   const labels = series.map(s => {
-    const last = s.values[s.values.length - 1];
+    const fc = forecastBySeries.get(s.en);
+    // Para séries com estimativa, ancora a etiqueta no último ponto estimado.
+    const last = fc ? fc.data[fc.data.length - 1] : s.values[s.values.length - 1];
     return {
       en: s.en, pt: s.pt, color: s.color, weight: s.weight,
       xLast: x(last.date),
@@ -553,6 +679,22 @@ async function drawFlows() {
 
   annotate(new Date('2023-11-15'), 'Ataques Houthi (nov 2023)', COLORS.rust, 'end');
   annotate(WAR_START,                'Guerra Irão (28 fev 2026)', COLORS.amberHot, 'start');
+
+  // Nota explicativa da convenção visual da estimativa.
+  // Aparece só se de facto houver dados em wartime.csv para evitar texto órfão.
+  if (forecastBySeries.size > 0) {
+    svg.append('text')
+      .attr('class', 'forecast-note')
+      .attr('x', x(WAR_START) + 6)
+      .attr('y', margin.top + 30)
+      .attr('text-anchor', 'start')
+      .attr('fill', COLORS.amberHot)
+      .attr('opacity', 0.75)
+      .style('font-family', 'JetBrains Mono, monospace')
+      .style('font-size', '10px')
+      .style('font-style', 'italic')
+      .text('--- tracejado + faixa = estimativa (STEO Abr 2026)');
+  }
 }
 
 

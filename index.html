@@ -105,7 +105,7 @@
 
     <!-- Container do mapa SVG (preenchido por D3) -->
     <figure class="viz viz--map">
-      <div id="map-world" role="img" aria-label="Mapa-mundo com os 8 principais chokepoints petrolíferos representados como círculos amarelos com o volume (milhões barris/dia) dentro. Estreito de Malaca 23,2 (Indo-Pacífico, o maior por volume); Estreito de Ormuz 20,9 destacado em vermelho (20% do consumo mundial); Cabo da Boa Esperança 9,1 (rota alternativa); Suez/SUMED 4,9; Estreitos Dinamarqueses 4,9; Bab el-Mandeb 4,2; Estreitos Turcos 3,7; Canal do Panamá 2,3. Rede de linhas vermelhas mostra as rotas marítimas reais que passam pelos chokepoints, do Golfo Pérsico para a Ásia via Malaca, para a Europa via Suez, e a alternativa pelo Cabo da Boa Esperança."></div>
+      <div id="map-world" role="img" aria-label="Mapa-mundo com os 8 principais chokepoints petrolíferos representados como círculos amarelos com o volume (milhões barris/dia) dentro. Estreito de Malaca 23,2 (Indo-Pacífico, o maior por volume); Estreito de Ormuz 20,9 destacado em vermelho (20% do consumo mundial); Cabo da Boa Esperança 9,1 (rota alternativa); Canal do Suez 4,9; Estreitos Dinamarqueses 4,9; Bab el-Mandeb 4,2; Estreitos Turcos 3,7; Canal do Panamá 2,3. Rede de linhas vermelhas mostra as rotas marítimas reais que passam pelos chokepoints, do Golfo Pérsico para a Ásia via Malaca, para a Europa via Suez, e a alternativa pelo Cabo da Boa Esperança."></div>
       <figcaption class="viz__caption">
         Volume diário de petróleo (milhões de barris/dia, 1.º semestre 2025) nos
         principais pontos de estrangulamento marítimos.
@@ -136,15 +136,22 @@
     </div>
 
     <figure class="viz">
-      <div id="chart-flows" role="img" aria-label="Gráfico de linhas com o volume de petróleo (milhões de barris/dia) transportado pelos 8 principais chokepoints petrolíferos entre 2011 e 1H2025. Linhas verticais marcam os ataques Houthi (Nov 2023) e o início da guerra Irão–EUA/Israel (28 Fev 2026). As séries primárias são Estreito de Ormuz e Cabo da Boa Esperança; secundárias Bab el-Mandeb e Suez/SUMED; terciárias Malaca, Estreitos Dinamarqueses, Estreitos Turcos e Canal do Panamá."></div>
+      <div id="chart-flows" role="img" aria-label="Gráfico de linhas com o volume de petróleo (milhões de barris/dia) transportado pelos 8 principais chokepoints petrolíferos entre 2011 e 1H2025. Linhas verticais marcam os ataques Houthi (Nov 2023) e o início da guerra Irão–EUA/Israel (28 Fev 2026). As séries primárias são Estreito de Ormuz e Cabo da Boa Esperança; secundárias Bab el-Mandeb e Canal do Suez; terciárias Malaca, Estreitos Dinamarqueses, Estreitos Turcos e Canal do Panamá. A partir de Fevereiro de 2026, as linhas do Estreito de Ormuz e do Cabo da Boa Esperança continuam em tracejado com faixas de incerteza, representando estimativas baseadas no STEO de Abril 2026, não dados reais."></div>
       <figcaption class="viz__caption">
         Volume de petróleo transportado pelos 8 principais chokepoints,
-        2011–1H2025. Repara como o <strong>Bab el-Mandeb</strong> (Mar Vermelho) já tinha
-        colapsado em 2024 com os ataques Houthi — e como o
-        <strong>Cabo da Boa Esperança</strong> absorveu o desvio. A linha vertical
-        marca o <strong>início da guerra Irão</strong> (Fev 2026) — os dados do EIA
-        ainda não cobrem esse período (publicação prevista 2H 2026 / 1H 2027).
-        <span class="viz__source">Fonte: U.S. Energy Information Administration (live + Wayback Machine).</span>
+        2011–1H2025 (dados reais, linhas sólidas). Repara como o
+        <strong>Bab el-Mandeb</strong> (Mar Vermelho) já tinha colapsado em 2024
+        com os ataques Houthi — e como o <strong>Cabo da Boa Esperança</strong>
+        absorveu o desvio. A linha vertical marca o
+        <strong>início da guerra Irão</strong> (28 Fev 2026). A partir daí, as
+        linhas <strong>tracejadas</strong> e as <strong>faixas claras</strong>
+        de Ormuz e Cabo são <em>estimativas</em>, não dados reais — ancoradas no
+        <em>Short-Term Energy Outlook</em> do EIA de Abril 2026, que estima 7,5
+        mb/d de produção parada em Março e 9,1 mb/d em Abril com recuperação
+        gradual sem regresso ao baseline até final de 2026. Os dados reais do
+        EIA para 2H 2025 e 2026 só são esperados entre o final de 2026 e o
+        início de 2027.
+        <span class="viz__source">Fonte: U.S. Energy Information Administration (chokepoints live + Wayback Machine; estimativa: STEO Abr 2026).</span>
       </figcaption>
     </figure>
   </section>
