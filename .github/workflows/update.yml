@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas yfinance requests beautifulsoup4 lxml openpyxl html5lib
+          pip install -r requirements.txt
 
       - name: Update Brent
         run: python api/brent.py

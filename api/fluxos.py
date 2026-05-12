@@ -41,7 +41,7 @@ WAYBACK_PREFIX = "https://web.archive.org/web/"
 WAYBACK_FROM_YEAR = 2017
 
 # Pausa entre fetches da Wayback para sermos educados com o servidor.
-WAYBACK_DELAY_S = 1.5
+WAYBACK_DELAY_S = 3
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -167,15 +167,17 @@ def fetch_chokepoints_live() -> tuple[pd.DataFrame, str]:
 def _list_wayback_snapshots(target_url: str, from_year: int) -> list[tuple[int, str]]:
     """Devolve [(ano, timestamp)] — um snapshot por ano, escolhido como o
     primeiro disponível em cada ano civil."""
-    params = {
-        'url': target_url,
-        'output': 'json',
-        'from': f'{from_year}0101',
-        'to': f'{datetime.now().year}1231',
-        'filter': 'statuscode:200',
-        'filter': 'mimetype:text/html',
-        'collapse': 'timestamp:4',  # 1 por ano (4 dígitos = YYYY)
-    }
+    # NB: usamos lista de tuplos (em vez de dict) porque a API CDX aceita
+    # MÚLTIPLOS parâmetros 'filter' — um dict colapsaria os dois numa só chave.
+    params = [
+        ('url', target_url),
+        ('output', 'json'),
+        ('from', f'{from_year}0101'),
+        ('to', f'{datetime.now().year}1231'),
+        ('filter', 'statuscode:200'),
+        ('filter', 'mimetype:text/html'),
+        ('collapse', 'timestamp:4'),  # 1 por ano (4 dígitos = YYYY)
+    ]
     r = requests.get(WAYBACK_CDX, params=params, headers=HEADERS, timeout=30)
     r.raise_for_status()
     rows = r.json()

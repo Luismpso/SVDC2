@@ -658,6 +658,74 @@ code { font-family: var(--font-mono); font-size: 0.85em; color: var(--teal); }
 .ocean {
   fill: #0d1620;
 }
+/* ====================================================================
+   MAPA — estilo EIA: rede de rotas + círculos com valor dentro
+   ==================================================================== */
+
+/* Rede global de rotas marítimas — 21 rotas formam a malha à EIA.
+   Amber-hot brilhante com glow subtil; opacidade moderada porque com
+   tantas sobreposições demasiado contraste vira sopa. */
+.route-network {
+  stroke: var(--amber-hot);
+  stroke-width: 1.6px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+/* Círculo principal dos chokepoints (com o valor dentro) */
+.cp-marker {
+  fill: var(--amber);
+  stroke: var(--amber-hot);
+  stroke-width: 1.4px;
+  fill-opacity: 0.95;
+  cursor: pointer;
+  transition: stroke-width 0.2s, fill-opacity 0.2s;
+}
+.cp-marker:hover {
+  stroke-width: 2.6px;
+  fill-opacity: 1;
+}
+
+/* Ormuz — destaca em rust (vermelho) para conectar com a Irão (também rust) */
+.cp-marker--main {
+  fill: var(--rust);
+  stroke: var(--amber-hot);
+  stroke-width: 2px;
+}
+
+/* Cabo da Boa Esperança — não é chokepoint, é alternativa. Mais claro/cinza */
+.cp-marker--alt {
+  fill: #b8a98a;
+  stroke: var(--ink);
+  stroke-width: 1.2px;
+  fill-opacity: 0.9;
+}
+
+/* Valor dentro do círculo — Fraunces serif, escuro sobre amber */
+.cp-value-inside {
+  font-family: var(--font-display);
+  font-weight: 600;
+  fill: #1a1410;
+  pointer-events: none;
+  letter-spacing: -0.01em;
+}
+
+/* Etiquetas de nome ao lado dos círculos */
+.cp-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  fill: var(--ink);
+  paint-order: stroke fill;
+  stroke: var(--bg-deep);
+  stroke-width: 3.5px;
+  pointer-events: none;
+}
+
+/* Legacy: estilos antigos preservados caso outros sítios os usem ---------- */
+
 .chokepoint {
   fill: var(--amber);
   stroke: var(--amber-hot);
@@ -695,8 +763,6 @@ code { font-family: var(--font-mono); font-size: 0.85em; color: var(--teal); }
   stroke-width: 3px;
 }
 
-/* Mini-etiquetas para os chokepoints secundários — discretas, mono, com
-   halo escuro para legibilidade sobre oceanos e países */
 .chokepoint-label-mini {
   font-family: var(--font-mono);
   font-size: 0.72rem;

@@ -31,7 +31,7 @@ const LiveData = {
 
       return {
         data: data.filter(d => !isNaN(d.value)),
-        source: 'Yahoo Finance / FRED (via GitHub Actions)',
+        source: 'FRED / Yahoo Finance (via GitHub Actions)',
         live: true
       };
     } catch (e) {

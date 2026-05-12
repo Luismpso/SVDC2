@@ -120,7 +120,7 @@ async function drawMap() {
   const projection = d3.geoNaturalEarth1()
     .scale(projScale)
     .translate([width / 2, height / 2])
-    .center([10, 0]);  // equador ao centro; longitude 10° para suave foco no MO
+    .center([10, 0]);
 
   const path = d3.geoPath(projection);
 
@@ -128,11 +128,11 @@ async function drawMap() {
   svg.append('rect').attr('class', 'ocean')
     .attr('width', width).attr('height', height);
 
-  // Carrega o mapa-mundo (TopoJSON CDN — leve e fiável)
+  // Mapa-mundo
   const world = await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
   const countries = topojson.feature(world, world.objects.countries);
 
-  // Países da região do Golfo Pérsico — vão ser realçados
+  // Países do Golfo Pérsico — realçados; Irão fica em destaque
   const HIGHLIGHT_COUNTRIES = new Set([
     'Iran','Saudi Arabia','United Arab Emirates','Qatar','Bahrain',
     'Kuwait','Oman','Iraq','Yemen'
@@ -148,258 +148,210 @@ async function drawMap() {
       })
       .attr('d', path);
 
-  // Chokepoints — pontos com volume de petróleo (mb/d)
-  // Coordenadas aproximadas dos centros geográficos
+  // ========== CHOKEPOINTS — 7 + Cabo (alternativa) ==========
+  // Ordenados por valor: Malaca é o maior por volume; Ormuz é o mais crítico.
   const CHOKEPOINTS = [
-    { name: 'Estreito de Ormuz',   coords: [56.5, 26.6], value: 20.9, main: true,
-      desc: '20% do petróleo mundial'},
-    { name: 'Estreito de Malaca',  coords: [101, 2.5],   value: 23.2, main: false,
-      desc: 'Indo-Pacífico, ligação Médio Oriente↔Ásia' },
-    { name: 'Bab el-Mandeb',       coords: [43.3, 12.6], value: 4.2,  main: false,
-      desc: 'Mar Vermelho — colapsou em 2024 com ataques Houthi' },
-    { name: 'Suez / SUMED',        coords: [32.5, 30.0], value: 4.9,  main: false,
-      desc: 'Canal do Suez + pipeline egípcio' },
-    { name: 'Estreitos Turcos',    coords: [29.0, 41.0], value: 3.7,  main: false,
-      desc: 'Bósforo + Dardanelos' },
-    { name: 'Estreitos Dinamarq.', coords: [12.5, 56.0], value: 4.9,  main: false,
+    { name: 'Estreito de Malaca',    coords: [101, 2.5],   value: 23.2,
+      desc: 'O maior do mundo por volume — Indo-Pacífico' },
+    { name: 'Estreito de Ormuz',     coords: [56.5, 26.6], value: 20.9, main: true,
+      desc: '20% do consumo mundial · 33 km de largura' },
+    { name: 'Cabo da Boa Esperança', coords: [18.5, -34.5],value: 9.1,  alt: true,
+      desc: 'Rota alternativa (+45% desde os ataques Houthi 2024)' },
+    { name: 'Suez / SUMED',          coords: [32.5, 30.0], value: 4.9,
+      desc: 'Canal do Suez + pipeline para o Mediterrâneo' },
+    { name: 'Estreitos Dinamarq.',   coords: [12.5, 56.0], value: 4.9,
       desc: 'Saída do petróleo russo do Báltico' },
-    { name: 'Cabo da Boa Esperança', coords: [18.5, -34.5], value: 9.1, main: false,
-      desc: 'Rota alternativa quando os chokepoints fecham' },
-    { name: 'Canal do Panamá',     coords: [-80, 9],     value: 2.3,  main: false,
-      desc: 'Atlântico↔Pacífico' },
+    { name: 'Bab el-Mandeb',         coords: [43.3, 12.6], value: 4.2,
+      desc: 'Mar Vermelho — colapsou em 2024 (Houthi)' },
+    { name: 'Estreitos Turcos',      coords: [29.0, 41.0], value: 3.7,
+      desc: 'Bósforo + Dardanelos — Mar Negro → Mediterrâneo' },
+    { name: 'Canal do Panamá',       coords: [-80, 9],     value: 2.3,
+      desc: 'Atlântico ↔ Pacífico (afetado pela seca em Gatún)' },
   ];
 
-  const r = d3.scaleSqrt().domain([0, 25]).range([0, 28]);
-
-  // ===== ROTAS DE NAVEGAÇÃO (premium, animadas) =====
-  // Três rotas que partem de Ormuz. Começam invisíveis; o primeiro clique
-  // no dot principal desenha-as do origem ao destino e depois entram em
-  // "flow" contínuo (dasharray a deslizar ao longo do path).
-  const ormuz    = CHOKEPOINTS.find(c => c.main);
-  const cabo     = CHOKEPOINTS.find(c => c.name === 'Cabo da Boa Esperança');
-  const suezCp   = CHOKEPOINTS.find(c => c.name === 'Suez / SUMED');
-  const malacaCp = CHOKEPOINTS.find(c => c.name === 'Estreito de Malaca');
-
-  const orm = projection(ormuz.coords);
-  const sue = projection(suezCp.coords);
-  const mal = projection(malacaCp.coords);
-  const cab = projection(cabo.coords);
-
-  // Helper 1: arco quadrático "bowado" para sul (lado mais marítimo).
-  // bow = quanto a curva se afasta da reta direta, em fração da corda.
-  function arc(p1, p2, bow = 0.20) {
-    const mx = (p1[0] + p2[0]) / 2;
-    const chord = Math.hypot(p2[0]-p1[0], p2[1]-p1[1]);
-    const cx = mx;
-    const cy = (p1[1] + p2[1]) / 2 + chord * bow;
-    const midX = 0.25 * p1[0] + 0.5 * cx + 0.25 * p2[0];
-    const midY = 0.25 * p1[1] + 0.5 * cy + 0.25 * p2[1];
-    return { d: `M ${p1[0]} ${p1[1]} Q ${cx} ${cy} ${p2[0]} ${p2[1]}`, mid: [midX, midY] };
-  }
-
-  // Helper 2: curva que passa por um waypoint (control point arbitrário).
-  // Útil quando a rota tem um chokepoint intermédio real (ex.: Suez via Bab).
-  function arcVia(p1, p2, waypoint, offsetY = 0) {
-    const cx = waypoint[0];
-    const cy = waypoint[1] + offsetY;
-    const midX = 0.25 * p1[0] + 0.5 * cx + 0.25 * p2[0];
-    const midY = 0.25 * p1[1] + 0.5 * cy + 0.25 * p2[1];
-    return { d: `M ${p1[0]} ${p1[1]} Q ${cx} ${cy} ${p2[0]} ${p2[1]}`, mid: [midX, midY] };
-  }
-
-  // Gradientes: cada rota nasce em amber-hot (em Ormuz) e desvanece
-  // para uma cor que liga ao destino — Suez/teal, Malaca/amber, Cabo/rust.
-  const defs = svg.append('defs');
-  const addGradient = (id, p1, p2, c1, c2) => {
-    const g = defs.append('linearGradient')
-      .attr('id', id).attr('gradientUnits', 'userSpaceOnUse')
-      .attr('x1', p1[0]).attr('y1', p1[1])
-      .attr('x2', p2[0]).attr('y2', p2[1]);
-    g.append('stop').attr('offset', '0%').attr('stop-color', c1).attr('stop-opacity', 0.95);
-    g.append('stop').attr('offset', '100%').attr('stop-color', c2).attr('stop-opacity', 0.55);
-  };
-  addGradient('grad-malaca', orm, mal, COLORS.amberHot, COLORS.amber);
-  addGradient('grad-suez',   orm, sue, COLORS.amberHot, COLORS.teal);
-  addGradient('grad-cabo',   orm, cab, COLORS.amberHot, COLORS.rust);
-
-  // Geometrias:
-  // Malaca: arco suave a sul de Índia (rota tanker padrão).
-  // Suez:   passa explicitamente por Bab el-Mandeb (waypoint REAL — tankers
-  //         contornam a Arábia, descem o Mar Arábico, sobem o Mar Vermelho).
-  // Cabo:   bow pequeno, a rota já é longa-sul.
-  const bab = projection([43.3, 12.6]);
-  const arcMalaca = arc(orm, mal, 0.16);
-  const arcSuez   = arcVia(orm, sue, bab, 18);   // 18px abaixo de Bab para "passar por baixo"
-  const arcCabo   = arc(orm, cab, 0.10);
-
-  // Definições das rotas — etiquetas em sítios livres de chokepoints/terra
+  // ========== ROTAS — rede global ao estilo EIA ==========
+  // 21 rotas formam a rede densa do mapa do EIA. Cada chokepoint serve
+  // como hub com várias saídas em direções distintas; o Cabo da Boa
+  // Esperança é particularmente importante (4 rotas radiantes).
   const ROUTES = [
-    {
-      id: 'malaca', d: arcMalaca.d, grad: 'grad-malaca',
-      label: { x: arcMalaca.mid[0],      y: arcMalaca.mid[1] + 22,
-               color: COLORS.amber, anchor: 'middle',
-               text: '89% → Ásia via Malaca' }
-    },
-    {
-      id: 'suez', d: arcSuez.d, grad: 'grad-suez',
-      // Etiqueta sobre o Mediterrâneo (NW do Suez), longe de Bab el-Mandeb
-      label: { x: sue[0] - 24,           y: sue[1] - 22,
-               color: COLORS.teal, anchor: 'end',
-               text: '→ Europa via Suez' }
-    },
-    {
-      id: 'cabo', d: arcCabo.d, grad: 'grad-cabo',
-      label: { x: arcCabo.mid[0],        y: arcCabo.mid[1] + 22,
-               color: COLORS.amberHot, anchor: 'middle',
-               text: '+15 dias por África' }
-    }
+    // Hub Ormuz
+    { id: 'h-mumbai',
+      pts: [[56.5, 26.6], [60, 23], [66, 21], [73, 19]] },
+    { id: 'h-malaca',     // Ormuz → Malaca
+      pts: [[56.5, 26.6], [62, 17], [75, 8], [88, 2], [101, 2.5]] },
+    { id: 'h-suez-med',  // Ormuz → Bab 
+      pts: [[56.5, 26.6], [55, 21], [50, 16], [45, 13]] },
+    { id: 'h-cape',      // Ormuz → Índico → Cabo
+      pts: [[56.5, 26.6], [63, 14], [62, 0], [55, -15], [42, -25],
+            [25, -32], [18.5, -34.5]] },
+
+    // Hub Cabo da Boa Esperança
+    { id: 'cape-eu',      // Cabo → Atlântico oeste → Roterdão
+      pts: [[18.5, -34.5], [8, -20], [-5, -5], [-15, 12], [-15, 30],
+            [-10, 42], [4, 52]] },
+    { id: 'cape-us-gulf', // Cabo → Atlântico → Golfo do México 
+      pts: [[18.5, -34.5], [8, -20], [-10, -10], [-30, 0], [-50, 12],
+            [-72, 22], [-90, 30]] },
+    { id: 'cape-brazil',  // Cabo → Atlântico Sul → Rio de Janeiro
+      pts: [[18.5, -34.5], [8, -20], [-10, -18], [-40, -15]] },
+    { id: 'cape-malaca', // Cabo → Índico → Malaca}
+      pts: [[18.5, -34.5], [25, -32], [42, -25], [55, -15],[70, 8], [88, 2],[101, 2.5]] },
+
+    // Hub Malaca
+
+    { id: 'malaca-japan', // Malaca → Mar da China → Japão
+      pts: [[101, 2.5], [105, 5], [110, 10], [120, 20], [135, 35]] },
+    { id: 'malaca-australia', // Malaca → Indonésia → Austrália
+      pts: [[101, 2.5], [110, 0], [120, -10], [130, -15]] },
+    { id: 'malaca-usa', // Malaca → Mar da China → Costa Oeste EUA
+      pts: [[101, 2.5], [105, 5], [110, 10],[120, 20],[150, 30], [170, 35], [180, 35]] },
+    { id: 'malaca-china', // Malaca → Mar da China → China
+      pts: [[101, 2.5], [105, 5], [110, 10],[120, 20], [120, 25]] },
+
+    // Hub Panamá
+    { id: 'p-alasca',   // Panamá → Pacifício Norte (Alasca)
+      pts: [[-80, 9], [-85, 8], [-95, 11], [-108, 18], [-118, 28], [-124, 34], [-130, 40], [-155, 60]]},
+    { id: 'p-usa-atlantic',       // Panamá → México Pacífico (Manzanillo)
+      pts: [[-80, 9], [-85, 20], [-90, 30]] },
+    { id: 'p-brazil',    // Panamá → Atlântico Sul → Rio (transatlântico norte)
+      pts: [[-80, 9], [-78, 13], [-70, 14], [-62, 12], [-55, 8], [-40, 0], [-32, -8], [-40, -15]] },
+    { id: 'p-chile',        // Panamá → Pacífico Sul (Valparaíso, Chile)
+      pts: [[-80, 9], [-82, 0], [-80, -15], [-72, -30], [-71, -33]] },
+    { id: 'p-usa-pacific',      // Panamá → Pacífico → Costa Oeste EUA (transatlântico norte)}
+      pts: [[-80, 9], [-85, 8], [-95, 11], [-108, 18], [-118, 28], [-118, 34] ]},
+    { id: 'p-malaca' ,     // Panamá → Atlântico → Cabo → Malaca
+      pts: [[-80, 9], [-90, 5], [-120, 14], [-150, 25]] },
+    
+    // USA
+    { id: 'usa-eu',        // EUA → Atlântico → Roterdão
+      pts: [[-75, 40], [-60, 40], [-30, 45], [0, 50], [4, 52]] },
+    { id: 'usa-cape',       // EUA → Atlântico → Cabo
+      pts: [[-75, 40], [-60, 20], [-50, 12],[-30, 0],[-10, -10],[8, -20], [18.5, -34.5]] },
+
+    // Bab el-Mandeb
+    { id: 'bab-suez',      // Bab el-Mandeb → Suez
+      pts: [[45, 13], [43.3, 12.6], [40, 18], [36, 25]] },
+    
+    // Suez
+    { id: 'suez-gibraltar', // Suez → Gibraltar
+      pts: [[36, 25], [33, 28], [32.5, 30], [28, 33], [18, 37],
+            [5, 38], [-5, 36]] },
+    { id: 'suez-eu', // Suez → Roterdão
+      pts: [[36, 25], [33, 28], [32.5, 30], [28, 33], [18, 37],
+            [5, 38], [-5, 36], [-10, 35], [-10, 42], [4, 52]] }, 
+    { id: 'suez-cape', // Suez → Cabo
+      pts: [[36, 25], [33, 28], [32.5, 30], [28, 33], [18, 37],
+            [5, 38], [-5, 36], [-15, 30] , [-15, 12] , [-5, -5],[8, -20], [18.5, -34.5]] }, 
+    {id: 'suez-africa', // Suez → África Ocidental (transatlântico sul)
+      pts: [[36, 25], [33, 28], [32.5, 30], [28, 33], [18, 37],
+            [5, 38], [-5, 36], [-15, 30] , [-15, 12] , [-5, -5], [10,0]]},  
+
+    // Danish Straits
+    { id: 'danish-russia',    // Dinamarquês → Rússia
+      pts: [[4, 52], [20, 55], [35, 55]] },
+
+    // Turkish Straits
+    { id: 'turkish-russia', // Turcos → Rússia
+      pts: [[30, 40],[40, 45]] },
+    { id: 'turkish-eu',      // Turcos → Europa (Roterdão)}
+      pts: [[30, 40], [18, 37], 
+            [5, 38], [-5, 36], [-10, 35], [-10, 42], [4, 52]] },
+    
+    // Pacific
+    { id: 'chile-p', 
+      pts: [[-71, -33], [-78, -20], [-121, 14], [-150, 25]]},
+    { id: 'usa-p',
+      pts: [[-118, 34], [-118, 28], [-110, 18], [-120, 14], [-150, 25]] },
   ];
 
-  // Group: começa invisível, é revelado no primeiro clique do Ormuz
-  const routesGroup = svg.append('g').attr('class', 'routes')
-    .style('pointer-events', 'none')
-    .style('opacity', 0);
+  const routeLine = d3.line()
+    .x(d => projection(d)[0])
+    .y(d => projection(d)[1])
+    .curve(d3.curveCatmullRom.alpha(0.5));
 
-  ROUTES.forEach(r => {
-    routesGroup.append('path')
-      .attr('class', `route route--${r.id}`)
-      .attr('d', r.d)
-      .attr('stroke', `url(#${r.grad})`)
-      .attr('stroke-width', 1.8)
-      .attr('stroke-linecap', 'round')
-      .attr('stroke-dasharray', '6 9')
-      .attr('opacity', 0.9)
-      .attr('fill', 'none');
+  // Glow filter via SVG defs (cria um halo subtil em volta da linha)
+  const defs = svg.append('defs');
+  const glow = defs.append('filter').attr('id', 'route-glow')
+    .attr('x', '-20%').attr('y', '-20%').attr('width', '140%').attr('height', '140%');
+  glow.append('feGaussianBlur').attr('stdDeviation', '2').attr('result', 'coloredBlur');
+  const merge = glow.append('feMerge');
+  merge.append('feMergeNode').attr('in', 'coloredBlur');
+  merge.append('feMergeNode').attr('in', 'SourceGraphic');
 
-    routesGroup.append('text')
-      .attr('class', `route-label route-label--${r.id}`)
-      .attr('x', r.label.x).attr('y', r.label.y)
-      .attr('text-anchor', r.label.anchor || 'middle')
-      .attr('fill', r.label.color)
-      .style('font-family', 'JetBrains Mono, monospace')
-      .style('font-size', '10.5px')
-      .style('paint-order', 'stroke fill')
-      .style('stroke', 'var(--bg-deep, #0a0e14)')
-      .style('stroke-width', '4px')
-      .style('opacity', 0)
-      .text(r.label.text);
-  });
+  svg.append('g').attr('class', 'routes-network')
+    .selectAll('path').data(ROUTES).enter().append('path')
+      .attr('class', 'route-network')
+      .attr('d', d => routeLine(d.pts))
+      .attr('fill', 'none')
+      .attr('filter', 'url(#route-glow)');
 
-  // Reveal — primeiro clique no Ormuz desenha as rotas e arranca o flow
-  let routesRevealed = false;
-  function revealRoutes() {
-    if (routesRevealed) return;
-    routesRevealed = true;
-    routesGroup.style('opacity', 1);
-
-    ROUTES.forEach((r, i) => {
-      const path  = routesGroup.select(`.route--${r.id}`);
-      const label = routesGroup.select(`.route-label--${r.id}`);
-      const len   = path.node().getTotalLength();
-
-      // Fase 1: desenhar o path de origem→destino
-      path
-        .attr('stroke-dasharray', `${len} ${len}`)
-        .attr('stroke-dashoffset', len)
-        .transition()
-          .duration(1400 + i * 100)
-          .delay(i * 220)
-          .ease(d3.easeQuadOut)
-          .attr('stroke-dashoffset', 0)
-        .on('end', function () {
-          // Fase 2: dasharray decorativo + flow contínuo via CSS
-          d3.select(this)
-            .attr('stroke-dasharray', '6 9')
-            .style('stroke-dashoffset', null)
-            .classed('route--flowing', true);
-        });
-
-      // Etiqueta aparece quando o path quase chegou ao destino
-      label.transition()
-        .delay(i * 220 + 1100)
-        .duration(500)
-        .style('opacity', 0.9);
-    });
-  }
+  // ========== MARCADORES (círculo amarelo + número dentro) ==========
+  // Range com mínimo confortável para o texto caber mesmo nos pequenos.
+  const r = d3.scaleSqrt().domain([0, 25]).range([15, 32]);
 
   const cp = svg.append('g').selectAll('g')
     .data(CHOKEPOINTS)
     .enter().append('g')
-      .attr('transform', d => `translate(${projection(d.coords)})`);
+      .attr('transform', d => `translate(${projection(d.coords)})`)
+      .style('cursor', 'pointer');
 
-  // Halo pulsante para o Estreito de Ormuz (chama atenção)
+  // Halo pulsante só para o Ormuz (chama atenção sem barulho)
   cp.filter(d => d.main).append('circle')
-    .attr('r', d => r(d.value) + 8)
+    .attr('r', d => r(d.value) + 6)
     .attr('fill', 'none')
-    .attr('stroke', COLORS.rust)
+    .attr('stroke', COLORS.amberHot)
     .attr('stroke-width', 1)
-    .attr('opacity', 0.6)
+    .attr('opacity', 0.55)
       .append('animate')
         .attr('attributeName', 'r')
-        .attr('values', `${r(20.9) + 6};${r(20.9) + 18};${r(20.9) + 6}`)
-        .attr('dur', '2.5s').attr('repeatCount', 'indefinite');
+        .attr('values', `${r(20.9) + 4};${r(20.9) + 14};${r(20.9) + 4}`)
+        .attr('dur', '3s').attr('repeatCount', 'indefinite');
 
+  // Círculo preenchido — Ormuz em rust (vermelho), Cabo em ink (cinza claro,
+  // sinaliza "alternativa"), restantes em amber.
   cp.append('circle')
-    .attr('class', d => 'chokepoint' + (d.main ? ' chokepoint--main' : ''))
-    .attr('r', d => r(d.value))
-    .style('cursor', d => d.main ? 'pointer' : 'default')
-    .on('mouseenter', (e, d) => {
-      showTooltip(e, `<strong>${d.name}</strong>${d.value} milhões barris/dia<br>${d.desc}` +
-        (d.main && !routesRevealed ? '<br><span style="opacity:.7">› clica para ver as rotas</span>' : ''));
-    })
-    .on('mousemove',  (e, d) => showTooltip(e,
-      `<strong>${d.name}</strong>${d.value} milhões barris/dia<br>${d.desc}` +
-      (d.main && !routesRevealed ? '<br><span style="opacity:.7">› clica para ver as rotas</span>' : '')))
-    .on('mouseleave', () => hideTooltip())
-    .on('click', (e, d) => { if (d.main) revealRoutes(); });
+    .attr('class', d =>
+      'cp-marker' +
+      (d.main ? ' cp-marker--main' : '') +
+      (d.alt ? ' cp-marker--alt' : ''))
+    .attr('r', d => r(d.value));
 
-  // Layout editorial das etiquetas — escolhido manualmente por geografia
-  // para evitar sobreposições com os dots e pousar sobre mares/oceanos
-  // (espaço de leitura limpo). anchor: 'start' (label à direita do ponto),
-  // 'end' (à esquerda), 'middle' (centrada). leader: leader line subtil.
+  // Valor DENTRO do círculo — formato pt-PT (vírgula decimal)
+  cp.append('text')
+    .attr('class', 'cp-value-inside')
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'central')
+    .attr('dy', '0.05em')
+    .text(d => d.value.toFixed(1).replace('.', ','))
+    .style('font-size', d => `${Math.max(10, r(d.value) * 0.55)}px`);
+
+  // Tooltip ao passar o rato
+  cp.on('mouseenter', (e, d) => showTooltip(e,
+        `<strong>${d.name}</strong>${d.value} milhões barris/dia<br>${d.desc}`))
+    .on('mousemove',  (e, d) => showTooltip(e,
+        `<strong>${d.name}</strong>${d.value} milhões barris/dia<br>${d.desc}`))
+    .on('mouseleave', () => hideTooltip());
+
+  // ========== ETIQUETAS DE NOME ==========
+  // Posicionadas manualmente para não sobrepor com círculos vizinhos nem com terra.
   const LABEL_LAYOUT = {
-    'Estreito de Ormuz':     { dx:  60, dy:  26, anchor: 'start',  leader: true  }, // SE — Mar Arábico
-    'Estreito de Malaca':    { dx:   0, dy:  44, anchor: 'middle', leader: false }, // S — Java/Sumatra
-    'Bab el-Mandeb':         { dx: -16, dy:   4, anchor: 'end',    leader: false }, // W — Sudão
-    'Suez / SUMED':          { dx: -16, dy:   4, anchor: 'end',    leader: false }, // W — Mediterrâneo
-    'Estreitos Turcos':      { dx:   0, dy: -14, anchor: 'middle', leader: false }, // N — Mar Negro
-    'Estreitos Dinamarq.':   { dx:  16, dy:   4, anchor: 'start',  leader: false }, // E — Báltico
-    'Cabo da Boa Esperança': { dx:  22, dy:   4, anchor: 'start',  leader: false }, // E — Índico
-    'Canal do Panamá':       { dx:  14, dy:   4, anchor: 'start',  leader: false }  // E — Caraíbas
+    'Estreito de Ormuz':     { dx:  44, dy:   2, anchor: 'start'  },  // direita — Mar Arábico
+    'Estreito de Malaca':    { dx:  40, dy:   8, anchor: 'start'  },  // direita
+    'Bab el-Mandeb':         { dx: -22, dy:   3, anchor: 'end'    },  // esquerda — Etiópia
+    'Suez / SUMED':          { dx: -22, dy:   3, anchor: 'end'    },  // esquerda
+    'Estreitos Turcos':      { dx:   0, dy: -22, anchor: 'middle' },  // cima
+    'Estreitos Dinamarq.':   { dx:   0, dy: -22, anchor: 'middle' },  // cima
+    'Cabo da Boa Esperança': { dx:   0, dy:  30, anchor: 'middle' },  // baixo
+    'Canal do Panamá':       { dx:   0, dy: -22, anchor: 'middle' },  // cima
   };
 
-  // Etiquetagem: TODOS os chokepoints recebem nome estático.
-  // Ormuz tem destaque (Fraunces, valor por baixo, leader line).
-  // Os outros usam mini-etiquetas em mono, mais discretas.
-  cp.each(function (d) {
-    const layout = LABEL_LAYOUT[d.name];
-    if (!layout) return;
-    const g = d3.select(this);
-
-    // Leader line — só Ormuz, porque a etiqueta está afastada do dot
-    if (layout.leader) {
-      g.append('line')
-        .attr('class', 'chokepoint-leader')
-        .attr('x1', 22).attr('y1', 10)            // borda do dot, direção SE
-        .attr('x2', layout.dx - 4).attr('y2', layout.dy);  // perto do label
-    }
-
-    // Nome do chokepoint
-    g.append('text')
-      .attr('class', d.main ? 'chokepoint-label' : 'chokepoint-label-mini')
-      .attr('x', layout.dx).attr('y', layout.dy)
-      .attr('text-anchor', layout.anchor)
-      .text(d.name);
-
-    // Valor — apenas Ormuz, em segunda linha
-    if (d.main) {
-      g.append('text')
-        .attr('class', 'chokepoint-value')
-        .attr('x', layout.dx).attr('y', layout.dy + 16)
-        .attr('text-anchor', layout.anchor)
-        .text('20,9 mb/d');
-    }
-  });
+  cp.append('text')
+    .attr('class', 'cp-label')
+    .attr('x', d => LABEL_LAYOUT[d.name].dx)
+    .attr('y', d => LABEL_LAYOUT[d.name].dy)
+    .attr('text-anchor', d => LABEL_LAYOUT[d.name].anchor)
+    .attr('dominant-baseline', 'central')
+    .text(d => d.name);
 }
 
 
@@ -1023,8 +975,8 @@ async function drawPrices() {
 
   // Carregar dados via LiveData (mesma fonte para histórico e atual de cada série)
   const [brentRes, fuelRes] = await Promise.all([
-    LiveData.brent(),   // Stooq → FRED → CSV local
-    LiveData.fuel()     // maisgasolina → CSV local
+    LiveData.brent(),   // CSV produzido por api/brent.py (FRED + Yahoo)
+    LiveData.fuel()     // CSV produzido por api/combustiveis.py (DGEG)
   ]);
   const brentRaw = brentRes.data;
   const fuelRaw  = fuelRes.data;
@@ -1194,16 +1146,13 @@ async function drawPrices() {
 }
 
 
-/* ---------- 6. INFLAÇÃO — SMALL MULTIPLES (Secção IV) ----------
-   Fonte: Eurostat HICP (taxa de variação anual, mensal) — api/inflacao.py
-   Schema: { date: Date, Total, Alimentacao, Energia, Transportes }
-   ============================================================== */
+/* ---------- 6. INFLAÇÃO — SMALL MULTIPLES (Secção IV) ---------- */
 
 async function drawInflation() {
   const container = document.getElementById('chart-inflation');
   const containerWidth = container.clientWidth;
 
-  // Carregar via LiveData (Eurostat CSV — taxa de variação anual mensal)
+  // Carregar via LiveData (PORDATA CSV — fonte estável 1960–2025)
   const ineRes = await LiveData.inflation();
   if (window.LiveStatus) window.LiveStatus.report('Inflação', ineRes);
 
@@ -1257,13 +1206,14 @@ async function drawInflation() {
     .domain([Math.min(yExt[0] - yPad, -2), yExt[1] + yPad]).nice()
     .range([cellH - margin.bottom, margin.top]);
 
-  // Eventos — guerras / crises com impacto no preço da energia
+  // Eventos relevantes para anotação
   const EVENTS = [
     { date: new Date('2008-09-15'), label: 'Crise 2008' },
     { date: new Date('2022-02-24'), label: 'Ucrânia' },
     { date: WAR_START,              label: 'Irão' },
   ];
 
+  // Gerar painel para cada classe
   CLASSES.forEach((cls, i) => {
     const row = Math.floor(i / cols);
     const col = i % cols;
@@ -1274,18 +1224,22 @@ async function drawInflation() {
       .attr('transform', `translate(${xOff}, ${yOff})`)
       .attr('class', cls === 'Transportes' ? 'sm sm--highlight' : 'sm');
 
+    // Fundo subtil para o painel destacado
     if (cls === 'Transportes') {
       g.append('rect')
         .attr('x', 0).attr('y', 0)
         .attr('width', cellW).attr('height', cellH)
-        .attr('fill', COLORS.amber).attr('opacity', 0.06).attr('rx', 2);
+        .attr('fill', COLORS.amber)
+        .attr('opacity', 0.06)
+        .attr('rx', 2);
     }
 
     // Linha de zero
     g.append('line')
       .attr('x1', margin.left).attr('x2', cellW - margin.right)
       .attr('y1', yScale(0)).attr('y2', yScale(0))
-      .attr('stroke', COLORS.inkDim).attr('stroke-opacity', 0.3)
+      .attr('stroke', COLORS.inkDim)
+      .attr('stroke-opacity', 0.3)
       .attr('stroke-dasharray', '2 3');
 
     // Linhas verticais para eventos
@@ -1300,6 +1254,7 @@ async function drawInflation() {
         .attr('stroke-width', 1);
     });
 
+    // Linha da série
     const lineGen = d3.line()
       .defined(d => d[cls] != null && !isNaN(d[cls]))
       .x(d => xScale(d.date))
@@ -1314,23 +1269,23 @@ async function drawInflation() {
       .attr('fill', 'none')
       .attr('stroke', strokeColor)
       .attr('stroke-width', isHighlight ? 2.2 : 1.4)
-      .attr('opacity', isHighlight ? 1 : 0.75)
+      .attr('opacity', isHighlight ? 1 : 0.7)
       .attr('d', lineGen);
 
+    // Animação de entrada
     const len = path.node().getTotalLength();
     path.attr('stroke-dasharray', `${len} ${len}`)
         .attr('stroke-dashoffset', len)
         .transition().duration(900).delay(i * 80).ease(d3.easeQuadOut)
         .attr('stroke-dashoffset', 0);
 
-    // Eixo Y
+    // Eixos minimal
     g.append('g')
       .attr('transform', `translate(${margin.left}, 0)`)
       .call(d3.axisLeft(yScale).ticks(4).tickFormat(d => d + '%').tickSize(0))
       .call(s => s.select('.domain').remove())
       .call(s => s.selectAll('text').attr('fill', COLORS.inkDim).style('font-size', '9px'));
 
-    // Eixo X — anos a cada ~5 anos
     g.append('g')
       .attr('transform', `translate(0, ${cellH - margin.bottom})`)
       .call(d3.axisBottom(xScale).ticks(d3.timeYear.every(5)).tickFormat(d3.timeFormat('%Y')).tickSize(0))
@@ -1364,8 +1319,10 @@ async function drawInflation() {
     // Hover — encontrar ponto mais próximo no tempo
     const bisect = d3.bisector(d => d.date).left;
     const focus = g.append('circle')
-      .attr('r', 3.5).attr('fill', strokeColor)
-      .style('opacity', 0).style('pointer-events', 'none');
+      .attr('r', 3.5)
+      .attr('fill', strokeColor)
+      .style('opacity', 0)
+      .style('pointer-events', 'none');
 
     g.append('rect')
       .attr('x', margin.left).attr('y', margin.top)
@@ -1385,8 +1342,9 @@ async function drawInflation() {
       .on('mouseleave', () => { focus.style('opacity', 0); hideTooltip(); });
   });
 
-  // Legenda dos eventos no topo
-  const legend = svg.append('g').attr('transform', 'translate(0, 18)');
+  // Legenda com os 3 eventos
+  const legend = svg.append('g')
+    .attr('transform', `translate(0, 16)`);
   EVENTS.forEach((e, i) => {
     const lg = legend.append('g').attr('transform', `translate(${i * 120}, 0)`);
     lg.append('line').attr('x2', 14).attr('y1', 5).attr('y2', 5)
