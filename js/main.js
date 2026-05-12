@@ -420,6 +420,23 @@ async function drawFlows() {
   }
   const wartimeByCp = d3.group(wartime, d => d.chokepoint);
 
+  // Produção parada (shut-in) — petróleo que SAIRIA por Ormuz mas que está
+  // a ser cortado na boca do poço por falta de escoamento alternativo.
+  // Numérico do STEO Abr 2026 do EIA. Visualizado como área hatched (tracejado
+  // diagonal) — semântica de "fantasma", para distinguir de fluxo real.
+  let shutin = [];
+  try {
+    shutin = await d3.csv('data/processed/shutin.csv', d => ({
+      date: new Date(d.date),
+      periodLabel: d.periodo_original,
+      value: +d.value,
+      nota: d.nota,
+    }));
+    shutin.sort((a, b) => a.date - b.date);
+  } catch (err) {
+    console.warn('[flows] shutin.csv não disponível:', err);
+  }
+
   // Hierarquia visual: primárias (3px, vivas) > secundárias (2px) > terciárias (1.2px, esbatidas).
   // Cada rota tem um peso narrativo diferente para a história da guerra do Irão.
   const SERIES = [
@@ -450,7 +467,7 @@ async function drawFlows() {
   const xMin = d3.min(allDates);
   const xMaxData = d3.max(allDates);
   const xMaxForecast = wartime.length ? d3.max(wartime, d => d.date) : null;
-  const xMaxWar  = new Date('2027-02-28');               // espaço para labels + estimativa Q4 2026
+  const xMaxWar  = new Date('2026-07-15');               // estimativa termina em Abr 2026; sobra ~3 meses para labels
   const xMax     = d3.max([xMaxData, xMaxForecast, xMaxWar].filter(Boolean));
 
   const x = d3.scaleTime().domain([xMin, xMax])
@@ -612,6 +629,91 @@ async function drawFlows() {
         .transition().duration(600).delay(800).attr('opacity', OPACITY[s.weight]);
   });
 
+  // ===== Área de PRODUÇÃO PARADA (shut-in) =====
+  // Petróleo que sairia normalmente por Ormuz mas está a ser cortado na boca
+  // do poço. Renderizado como área hatched (linhas diagonais) para semântica
+  // visual de "produção fantasma, não fluxo real".
+  if (shutin.length > 0) {
+    // Define o padrão de tracejado diagonal numa <defs>
+    const defs = svg.append('defs');
+    const pat = defs.append('pattern')
+      .attr('id', 'hatch-shutin')
+      .attr('width', 5).attr('height', 5)
+      .attr('patternUnits', 'userSpaceOnUse')
+      .attr('patternTransform', 'rotate(45)');
+    pat.append('rect')
+      .attr('width', 5).attr('height', 5)
+      .attr('fill', COLORS.rust)
+      .attr('fill-opacity', 0.08);
+    pat.append('line')
+      .attr('x1', 0).attr('y1', 0)
+      .attr('x2', 0).attr('y2', 5)
+      .attr('stroke', COLORS.rust)
+      .attr('stroke-width', 1.2)
+      .attr('opacity', 0.55);
+
+    const shutinAreaGen = d3.area()
+      .x(d => x(d.date))
+      .y0(() => y(0))
+      .y1(d => y(d.value))
+      .curve(d3.curveMonotoneX);
+
+    forecastGroup.append('path')
+      .datum(shutin)
+      .attr('class', 'shutin-area')
+      .attr('fill', 'url(#hatch-shutin)')
+      .attr('stroke', COLORS.rust)
+      .attr('stroke-opacity', 0.45)
+      .attr('stroke-width', 1)
+      .attr('d', shutinAreaGen)
+      .attr('opacity', 0)
+      .transition().duration(900).delay(1000).attr('opacity', 1);
+
+    // Pontos nos meses com shut-in (omite o ponto a zero do dia 28 fev)
+    forecastGroup.append('g').selectAll('circle.shutin-dot')
+      .data(shutin.filter(d => d.value > 0))
+      .enter().append('circle')
+        .attr('class', 'shutin-dot')
+        .attr('cx', d => x(d.date))
+        .attr('cy', d => y(d.value))
+        .attr('r', 3)
+        .attr('fill', COLORS.rust)
+        .attr('stroke', '#0a0e14')
+        .attr('stroke-width', 1)
+        .attr('opacity', 0)
+        .on('mouseenter', (e, d) => {
+          showTooltip(e,
+            `<strong>Produção parada (shut-in)</strong>${d.periodLabel}: ${d.value.toFixed(1)} mb/d`
+            + (d.nota ? `<br><span style="opacity:.7;font-size:.9em">${d.nota}</span>` : ''));
+        })
+        .on('mouseleave', hideTooltip)
+        .transition().duration(500).delay(1200).attr('opacity', 1);
+
+    // Etiqueta da série shut-in à direita do último ponto
+    const lastShutin = shutin[shutin.length - 1];
+    forecastGroup.append('text')
+      .attr('class', 'shutin-label')
+      .attr('x', x(lastShutin.date) + 10)
+      .attr('y', y(lastShutin.value) - 6)
+      .attr('fill', COLORS.rust)
+      .style('font-family', 'JetBrains Mono, monospace')
+      .style('font-size', '10px')
+      .style('font-style', 'italic')
+      .style('opacity', 0)
+      .text('Produção parada')
+      .transition().duration(500).delay(1300).style('opacity', 0.85);
+    forecastGroup.append('text')
+      .attr('class', 'shutin-label')
+      .attr('x', x(lastShutin.date) + 10)
+      .attr('y', y(lastShutin.value) + 6)
+      .attr('fill', COLORS.inkDim)
+      .style('font-family', 'JetBrains Mono, monospace')
+      .style('font-size', '9px')
+      .style('opacity', 0)
+      .text('(shut-in · STEO)')
+      .transition().duration(500).delay(1300).style('opacity', 0.7);
+  }
+
   // ===== Etiquetas no fim das linhas com colisão evitada =====
   // 1. Calcula a posição-alvo de cada etiqueta (Y do último ponto — real ou estimado)
   // 2. Ordena por Y crescente (do topo do gráfico para baixo)
@@ -693,7 +795,7 @@ async function drawFlows() {
       .style('font-family', 'JetBrains Mono, monospace')
       .style('font-size', '10px')
       .style('font-style', 'italic')
-      .text('--- tracejado + faixa = estimativa (STEO Abr 2026)');
+      .text('--- tracejado = estimativa de fluxo · /// hatched = produção parada (STEO Abr 2026)');
   }
 }
 
@@ -718,77 +820,104 @@ async function drawTolls() {
   if (window.LiveStatus) window.LiveStatus.report('Portagens', { live: true, source: 'Notícias + tratados (Mai 2026)' });
 
   const width = container.clientWidth;
-  const margin = { top: 30, right: 320, bottom: 50, left: 200 };
-  const rowH = 64;
+  const margin = { top: 30, right: 320, bottom: 50, left: 220 };
 
-  // Status:
+  // Estrutura agrupada: estreitos naturais primeiro (Ormuz como caso anómalo
+  // no topo), canais construídos em baixo. Dentro de cada grupo, ordem
+  // descendente por valor cobrado/proposto. Status:
   //   legitimate → tarifário com base jurídica clara
-  //   imposed    → portagem aplicada pelo estado costeiro mas contestada (UNCLOS Art. 26)
-  //   rejected   → proposta abandonada/recusada
-  const TOLLS = [
+  //   imposed    → portagem aplicada unilateralmente, contestada (UNCLOS Art. 26)
+  //   rejected   → proposta abandonada/recusada (ghost bar com strikethrough)
+  const TOLL_GROUPS = [
     {
-      name: 'Estreito de Ormuz',
-      toll: 1500000, status: 'imposed',
-      type: 'Estreito natural',
-      legal: 'UNCLOS Art. 26 proíbe portagens em estreitos de navegação internacional',
-      since: 'Mar 2026',
-      detail: 'Parlamento iraniano aprovou lei a 26 Mar; BC já recebeu “primeira receita” a 23 Abr.',
-      source: 'Bloomberg, Iran Intl., AA News'
+      id: 'natural',
+      header: 'Estreitos naturais',
+      hint: 'UNCLOS Art. 26 → passagem livre, sem portagens',
+      tolls: [
+        {
+          name: 'Estreito de Ormuz',
+          toll: 1500000, status: 'imposed',
+          type: 'Estreito natural',
+          legal: 'UNCLOS Art. 26 proíbe portagens em estreitos de navegação internacional',
+          since: 'Mar 2026',
+          detail: 'Parlamento iraniano aprovou lei a 26 Mar; BC já recebeu "primeira receita" a 23 Abr.',
+          source: 'Bloomberg, Iran Intl., AA News',
+        },
+        {
+          name: 'Estreito de Malaca',
+          toll: 0, proposed_toll: 1000000, status: 'rejected',
+          type: 'Estreito natural',
+          legal: 'UNCLOS — Singapura e Malásia recusaram em 24h',
+          since: 'Abr 2026 (recusada)',
+          detail: 'Min. Finanças indonésio Purbaya propôs ~$1M/navio a 22 Abr; recuou no dia seguinte.',
+          source: 'The Diplomat, Lowy Institute',
+        },
+        {
+          name: 'Estreitos Turcos',
+          toll: 100000, status: 'legitimate',
+          type: 'Estreito natural · exceção',
+          legal: 'Convenção de Montreux (1936) — regime especial pré-UNCLOS',
+          since: 'desde 1936',
+          detail: 'Taxa por tonelagem (~$0,95/ton). Única exceção legal entre estreitos naturais.',
+          source: 'Convenção de Montreux',
+        },
+      ],
     },
     {
-      name: 'Estreito de Malaca',
-      toll: 0, status: 'rejected',
-      type: 'Estreito natural',
-      legal: 'UNCLOS — Singapura e Malásia recusaram em 24h',
-      since: 'Abr 2026 (recusada)',
-      detail: 'Min. Finanças indonésio Purbaya propôs taxa a 22 Abr; recuou no dia seguinte.',
-      source: 'The Diplomat, Lowy Institute'
-    },
-    {
-      name: 'Canal do Suez',
-      toll: 700000, status: 'legitimate',
-      type: 'Canal construído',
-      legal: 'Soberania egípcia — canal artificial fora do regime UNCLOS de estreitos',
-      since: 'desde 1869',
-      detail: 'VLCC com carga típica paga $300k–$1M consoante direção e tonelagem.',
-      source: 'Suez Canal Authority'
-    },
-    {
-      name: 'Canal do Panamá',
-      toll: 500000, status: 'legitimate',
-      type: 'Canal construído',
-      legal: 'Soberania panamiana — canal artificial',
-      since: 'desde 1914',
-      detail: 'Aumentos recentes desde 2024 pela seca no lago Gatún.',
-      source: 'Panama Canal Authority'
-    },
-    {
-      name: 'Estreitos Turcos',
-      toll: 100000, status: 'legitimate',
-      type: 'Estreito natural',
-      legal: 'Convenção de Montreux (1936) — regime especial pré-UNCLOS',
-      since: 'desde 1936',
-      detail: 'Taxa por tonelagem (~$0,95/ton). Cobrada à passagem para o Mar Negro.',
-      source: 'Convenção de Montreux'
+      id: 'artificial',
+      header: 'Canais construídos',
+      hint: 'Soberania nacional → tarifários comerciais legítimos',
+      tolls: [
+        {
+          name: 'Canal do Suez',
+          toll: 700000, status: 'legitimate',
+          type: 'Canal construído',
+          legal: 'Soberania egípcia — canal artificial fora do regime UNCLOS de estreitos',
+          since: 'desde 1869',
+          detail: 'VLCC com carga típica paga $300k–$1M consoante direção e tonelagem.',
+          source: 'Suez Canal Authority',
+        },
+        {
+          name: 'Canal do Panamá',
+          toll: 500000, status: 'legitimate',
+          type: 'Canal construído',
+          legal: 'Soberania panamiana — canal artificial',
+          since: 'desde 1914',
+          detail: 'Aumentos recentes desde 2024 pela seca no lago Gatún.',
+          source: 'Panama Canal Authority',
+        },
+      ],
     },
   ];
 
-  const height = margin.top + margin.bottom + TOLLS.length * rowH;
+  // Layout vertical: cabeçalho de grupo + linhas + gap entre grupos.
+  const ROW_H = 64;
+  const HEADER_H = 40;
+  const GROUP_GAP = 14;
+  let cy = margin.top;
+  const layout = [];
+  TOLL_GROUPS.forEach((group, gi) => {
+    if (gi > 0) cy += GROUP_GAP;
+    layout.push({ kind: 'header', y: cy, group });
+    cy += HEADER_H;
+    group.tolls.forEach(toll => {
+      layout.push({ kind: 'toll', y: cy, ...toll });
+      cy += ROW_H;
+    });
+  });
+  const height = cy + margin.bottom;
 
   const svg = d3.select(container).append('svg')
     .attr('viewBox', `0 0 ${width} ${height}`)
     .attr('preserveAspectRatio', 'xMidYMid meet');
 
-  // Escala X: linear até $1.6M com padding para a etiqueta de valor caber
-  const xMax = d3.max(TOLLS, d => d.toll);
+  // Escala X: inclui proposed_toll para a ghost bar de Malaca caber bem
+  const allValues = TOLL_GROUPS.flatMap(g =>
+    g.tolls.flatMap(t => [t.toll || 0, t.proposed_toll || 0]));
+  const xMax = d3.max(allValues);
   const x = d3.scaleLinear()
     .domain([0, xMax * 1.18])
     .range([margin.left, width - margin.right]);
-
-  const y = d3.scaleBand()
-    .domain(TOLLS.map(d => d.name))
-    .range([margin.top, height - margin.bottom])
-    .padding(0.35);
 
   // Cores por status
   const STATUS_COLOR = {
@@ -813,20 +942,58 @@ async function drawTolls() {
   xAxis.selectAll('line').attr('stroke-opacity', 0.1);
   xAxis.select('.domain').remove();
 
-  // (Sem subtítulo inline — o figcaption por baixo do SVG já explica
-  //  que os valores são estimativas em USD por petroleiro VLCC.)
+  // === CABEÇALHOS DE GRUPO ===
+  // Cada grupo recebe um título (à esquerda) + subtítulo legal + linha
+  // horizontal de baixo a separar do bloco de linhas.
+  layout.filter(l => l.kind === 'header').forEach(item => {
+    const g = svg.append('g')
+      .attr('class', 'toll-group-header')
+      .attr('transform', `translate(0, ${item.y})`);
 
-  // Linhas + barras + textos
+    g.append('text')
+      .attr('x', margin.left - 12)
+      .attr('y', 16)
+      .attr('text-anchor', 'end')
+      .attr('fill', COLORS.ink)
+      .style('font-family', 'Fraunces, serif')
+      .style('font-size', '13px')
+      .style('font-weight', 600)
+      .style('letter-spacing', '0.08em')
+      .style('text-transform', 'uppercase')
+      .text(item.group.header);
+
+    g.append('text')
+      .attr('x', margin.left - 12)
+      .attr('y', 32)
+      .attr('text-anchor', 'end')
+      .attr('fill', COLORS.inkDim)
+      .style('font-family', 'JetBrains Mono, monospace')
+      .style('font-size', '10px')
+      .style('font-style', 'italic')
+      .text(item.group.hint);
+
+    g.append('line')
+      .attr('x1', margin.left)
+      .attr('x2', width - margin.right)
+      .attr('y1', HEADER_H - 4)
+      .attr('y2', HEADER_H - 4)
+      .attr('stroke', COLORS.ink)
+      .attr('stroke-opacity', 0.18);
+  });
+
+  // === LINHAS DE PORTAGEM ===
+  const tollItems = layout.filter(l => l.kind === 'toll');
+
   const row = svg.selectAll('g.toll-row')
-    .data(TOLLS)
+    .data(tollItems)
     .enter().append('g')
       .attr('class', 'toll-row')
-      .attr('transform', d => `translate(0, ${y(d.name)})`);
+      .attr('transform', d => `translate(0, ${d.y})`);
 
-  // Nome do chokepoint (à esquerda)
+  // Nome do chokepoint
   row.append('text')
     .attr('x', margin.left - 12)
-    .attr('y', y.bandwidth() / 2 - 2)
+    .attr('y', ROW_H / 2 - 2)
     .attr('text-anchor', 'end')
     .attr('fill', COLORS.ink)
     .style('font-family', 'Fraunces, serif')
@@ -837,27 +1004,48 @@ async function drawTolls() {
   // Tipo (canal vs estreito)
   row.append('text')
     .attr('x', margin.left - 12)
-    .attr('y', y.bandwidth() / 2 + 14)
+    .attr('y', ROW_H / 2 + 14)
     .attr('text-anchor', 'end')
     .attr('fill', COLORS.inkDim)
     .style('font-family', 'JetBrains Mono, monospace')
     .style('font-size', '10px')
     .text(d => d.type);
 
-  // Bar
-  row.append('rect')
-    .attr('x', margin.left)
-    .attr('y', 6)
-    .attr('height', y.bandwidth() - 12)
-    .attr('width', 0)   // animação
-    .attr('fill', d => STATUS_COLOR[d.status])
-    .attr('opacity', d => d.status === 'rejected' ? 0.35 : 0.85)
-    .attr('rx', 2)
-    .on('mouseenter', function (e, d) {
+  // Bar (sólida normal OU "ghost" tracejada para proposta recusada)
+  row.each(function (d, i) {
+    const g = d3.select(this);
+    const isGhost = d.status === 'rejected' && d.proposed_toll;
+    const barValue = isGhost ? d.proposed_toll : d.toll;
+    const barWidthFinal = Math.max(2, x(barValue) - margin.left);
+
+    const bar = g.append('rect')
+      .attr('class', 'toll-bar')
+      .attr('x', margin.left)
+      .attr('y', 6)
+      .attr('height', ROW_H - 12)
+      .attr('rx', 2)
+      .attr('width', 0);
+
+    if (isGhost) {
+      bar.attr('fill', 'none')
+         .attr('stroke', STATUS_COLOR[d.status])
+         .attr('stroke-width', 1.5)
+         .attr('stroke-dasharray', '5 4')
+         .attr('opacity', 0.8);
+    } else {
+      bar.attr('fill', STATUS_COLOR[d.status])
+         .attr('opacity', 0.85);
+    }
+
+    const restingOpacity = isGhost ? 0.8 : 0.85;
+
+    bar.on('mouseenter', function (e) {
       d3.select(this).attr('opacity', 1);
-      const tollTxt = d.toll === 0 ? 'sem portagem' :
-        d.toll >= 1e6 ? `$${(d.toll/1e6).toFixed(1)}M/navio` :
-        `$${(d.toll/1000).toFixed(0)}k/navio`;
+      const tollTxt = isGhost
+        ? `proposta: ≈$${(d.proposed_toll/1e6).toFixed(1)}M/navio (recusada)`
+        : d.toll === 0 ? 'sem portagem'
+        : d.toll >= 1e6 ? `$${(d.toll/1e6).toFixed(1)}M/navio`
+        : `$${(d.toll/1000).toFixed(0)}k/navio`;
       showTooltip(e,
         `<strong>${d.name} · ${tollTxt}</strong>` +
         `${d.detail}<br>` +
@@ -866,33 +1054,57 @@ async function drawTolls() {
     })
     .on('mousemove', (e) => tooltip
       .style('left', (e.pageX + 14) + 'px').style('top', (e.pageY - 10) + 'px'))
-    .on('mouseleave', function (e, d) {
-      d3.select(this).attr('opacity', d.status === 'rejected' ? 0.35 : 0.85);
+    .on('mouseleave', function () {
+      d3.select(this).attr('opacity', restingOpacity);
       hideTooltip();
     })
-    .transition().duration(900).delay((d, i) => i * 100).ease(d3.easeQuadOut)
-    .attr('width', d => Math.max(2, x(d.toll) - margin.left));
+    .transition().duration(900).delay(i * 100).ease(d3.easeQuadOut)
+    .attr('width', barWidthFinal);
+
+    // Diagonal de "riscado" para ghost bar (anima junto)
+    if (isGhost) {
+      g.append('line')
+        .attr('class', 'toll-strikethrough')
+        .attr('x1', margin.left)
+        .attr('x2', margin.left)
+        .attr('y1', ROW_H - 6)
+        .attr('y2', 6)
+        .attr('stroke', STATUS_COLOR[d.status])
+        .attr('stroke-width', 1.5)
+        .attr('opacity', 0.85)
+        .transition().duration(900).delay(i * 100 + 250).ease(d3.easeQuadOut)
+        .attr('x2', margin.left + barWidthFinal);
+    }
+  });
 
   // Valor à direita do bar
   row.append('text')
     .attr('class', 'toll-value')
-    .attr('x', d => x(d.toll) + 8)
-    .attr('y', y.bandwidth() / 2 + 2)
+    .attr('x', d => {
+      const v = d.status === 'rejected' && d.proposed_toll ? d.proposed_toll : d.toll;
+      return x(v) + 8;
+    })
+    .attr('y', ROW_H / 2 + 2)
     .attr('fill', d => STATUS_COLOR[d.status])
     .style('font-family', 'JetBrains Mono, monospace')
     .style('font-size', '13px')
     .style('font-weight', 500)
     .style('opacity', 0)
-    .text(d => d.toll === 0 ? 'recusada'
-              : d.toll >= 1e6 ? `≈ $${(d.toll/1e6).toFixed(1)}M`
-              : `≈ $${(d.toll/1000).toFixed(0)}k`)
+    .text(d => {
+      if (d.status === 'rejected' && d.proposed_toll) {
+        return `≈ $${(d.proposed_toll/1e6).toFixed(1)}M proposto`;
+      }
+      return d.toll === 0 ? 'sem portagem'
+            : d.toll >= 1e6 ? `≈ $${(d.toll/1e6).toFixed(1)}M`
+            : `≈ $${(d.toll/1000).toFixed(0)}k`;
+    })
     .transition().duration(400).delay((d, i) => 900 + i * 100)
     .style('opacity', 1);
 
-  // Estatuto legal + ano (à direita do valor)
+  // Estatuto + ano à direita
   row.append('text')
     .attr('x', width - margin.right + 8)
-    .attr('y', y.bandwidth() / 2 - 2)
+    .attr('y', ROW_H / 2 - 2)
     .attr('fill', d => STATUS_COLOR[d.status])
     .style('font-family', 'JetBrains Mono, monospace')
     .style('font-size', '10px')
@@ -901,7 +1113,7 @@ async function drawTolls() {
 
   row.append('text')
     .attr('x', width - margin.right + 8)
-    .attr('y', y.bandwidth() / 2 + 12)
+    .attr('y', ROW_H / 2 + 12)
     .attr('fill', COLORS.inkDim)
     .style('font-family', 'JetBrains Mono, monospace')
     .style('font-size', '10px')

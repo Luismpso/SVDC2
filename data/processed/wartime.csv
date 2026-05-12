@@ -1,7 +1,9 @@
 date,periodo_original,chokepoint,value,value_low,value_high,nota
-2025-10-01,2H2025,Strait of Hormuz,20.9,20.4,21.4,Pre-guerra; sem choques conhecidos — extensao do baseline 1H2025
-2026-02-15,1Q2026,Strait of Hormuz,16.0,13.5,18.5,Jan-Fev normais; Marco com estreito fechado a maior parte do mes (media trimestral)
-2026-05-15,2Q2026,Strait of Hormuz,11.0,7.5,14.5,Abril com estreito quase fechado (fluxo perto de zero); reabertura gradual em Mai-Jun. STEO Abr 2026 reporta 9.1 mb/d shut-in
-2025-10-01,2H2025,Cape of Good Hope,9.0,8.5,9.5,Continuacao do desvio pos-Houthi; sem grandes oscilacoes esperadas
-2026-02-15,1Q2026,Cape of Good Hope,10.0,9.0,11.0,Ligeiro aumento com inicio do conflito a 28 fev
-2026-05-15,2Q2026,Cape of Good Hope,12.5,11.0,14.5,Pico de rerouting com Ormuz e Bab el-Mandeb ambos afetados
+2025-10-01,2H2025,Strait of Hormuz,20.9,20.4,21.4,Pre-guerra; extensao do baseline 1H2025 (sem choques conhecidos)
+2026-02-28,28 Fev 2026,Strait of Hormuz,20.9,20.4,21.4,Inicio da guerra — ancora no baseline; fluxo ainda normal neste dia
+2026-03-15,Mar 2026,Strait of Hormuz,13.0,10.0,16.0,Estreito fechado a maior parte do mes; alguma diversao via pipeline Saudi East-West (~5 mb/d)
+2026-04-15,Abr 2026,Strait of Hormuz,4.0,2.0,6.0,Pico de encerramento; fluxo quase nulo. STEO Abr 2026 reporta 9.1 mb/d de producao shut-in. Conflito ainda em curso
+2025-10-01,2H2025,Cape of Good Hope,9.0,8.5,9.5,Continuacao do desvio pos-Houthi
+2026-02-28,28 Fev 2026,Cape of Good Hope,9.1,8.6,9.6,Inicio da guerra — ancora no baseline pos-Houthi
+2026-03-15,Mar 2026,Cape of Good Hope,10.0,9.0,11.0,Ligeiro aumento de rerouting com encerramento de Ormuz
+2026-04-15,Abr 2026,Cape of Good Hope,13.5,12.0,15.0,Pico de rerouting com Ormuz e Bab el-Mandeb ambos afetados. Tendencia em alta — conflito em curso
