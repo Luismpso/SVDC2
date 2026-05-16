@@ -7,7 +7,7 @@
 
 > **Sistemas de Visualização de Dados e Conhecimento** | Mestrado em Inteligência Artificial | Universidade do Minho | 2025/26
 >
-> **Modalidade:** *Data story* (em vez de poster) · **Apresentação oral:** 28 Maio 2026
+> **Modalidade:** *Data story* · **Apresentação oral:** 28 Maio 2026
 
 *Data story* interactiva em **D3.js v7** que segue o petróleo desde o Estreito de Ormuz até à bomba de gasolina em Portugal, no contexto da guerra Irão–EUA/Israel iniciada a 28 de Fevereiro de 2026. Integra **8 datasets relacionados** de fontes oficiais (EIA, FRED, Eurostat, BPstat, DGEG, Wayback Machine, Natural Earth, e estimativas STEO).
 
