@@ -3,13 +3,16 @@
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![D3.js](https://img.shields.io/badge/D3.js-v7-orange)
 ![Status](https://img.shields.io/badge/Status-Done-success)
+![Live](https://img.shields.io/badge/Online-luismpso.github.io%2FSVDC3-yellow)
 ![License](https://img.shields.io/badge/License-Academic-lightgrey)
 
 > **Sistemas de Visualização de Dados e Conhecimento** | Mestrado em Inteligência Artificial | Universidade do Minho | 2025/26
 >
-> **Modalidade:** *Data story* · **Apresentação oral:** 28 Maio 2026
+> **Modalidade:** *Data story* (em vez de poster) · **Apresentação oral:** 28 Maio 2026
 
 *Data story* interactiva em **D3.js v7** que segue o petróleo desde o Estreito de Ormuz até à bomba de gasolina em Portugal, no contexto da guerra Irão–EUA/Israel iniciada a 28 de Fevereiro de 2026. Integra **8 datasets relacionados** de fontes oficiais (EIA, FRED, Eurostat, BPstat, DGEG, Wayback Machine, Natural Earth, e estimativas STEO).
+
+🌐 **Online em** [`luismpso.github.io/SVDC3/`](https://luismpso.github.io/SVDC3/)
 
 ---
 
@@ -24,6 +27,8 @@
 ---
 
 ## 📊 Resultados
+
+![Página completa de "O Preço da Guerra" — do hero até à calculadora pessoal](docs/screenshot-fullpage.png)
 
 ### Impacto da guerra (Fev 2026 → Abr 2026)
 
