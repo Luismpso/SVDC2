@@ -3,24 +3,20 @@
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![D3.js](https://img.shields.io/badge/D3.js-v7-orange)
 ![Status](https://img.shields.io/badge/Status-Done-success)
-![Live](https://img.shields.io/badge/Online-luismpso.github.io%2FSVDC3-yellow)
 ![License](https://img.shields.io/badge/License-Academic-lightgrey)
 
 > **Sistemas de Visualização de Dados e Conhecimento** | Mestrado em Inteligência Artificial | Universidade do Minho | 2025/26
 >
-> **Modalidade:** *Data story* (em vez de poster) · **Apresentação oral:** 28 Maio 2026
+> **Modalidade:** Avaliação 2 (Grupo) · **Tipo:** *Data story* · **Apresentação oral:** 28 Maio 2026
 
 *Data story* interactiva em **D3.js v7** que segue o petróleo desde o Estreito de Ormuz até à bomba de gasolina em Portugal, no contexto da guerra Irão–EUA/Israel iniciada a 28 de Fevereiro de 2026. Integra **8 datasets relacionados** de fontes oficiais (EIA, FRED, Eurostat, BPstat, DGEG, Wayback Machine, Natural Earth, e estimativas STEO).
-
-🌐 **Online em** [`luismpso.github.io/SVDC3/`](https://luismpso.github.io/SVDC3/)
 
 ---
 
 ## 🏆 Conquistas
 
-* **Pipeline 100% automatizado:** 7 fontes oficiais integradas, atualização diária via GitHub Actions, zero intervenção manual.
+* **Pipeline automatizada:** 7 fontes oficiais integradas, atualização diária via GitHub Actions, zero intervenção manual.
 * **Recuperação histórica:** Wayback Machine usada para extrair tabelas EIA de 2017–2024 que já não estão online — série temporal estendida de 6 para 14 anos.
-* **Rede de 21 rotas marítimas** sobre mapa-mundo Natural Earth com 8 chokepoints dimensionados pelo valor real (não hardcoded).
 * **Pipeline resiliente:** cada script tem fallback secundário e *retries* exponenciais; se ambas as fontes falharem, o CSV anterior fica intacto.
 * **Live status bar** com indicador 🟢/⚪ por fonte — exposição honesta do estado dos dados ao leitor.
 
