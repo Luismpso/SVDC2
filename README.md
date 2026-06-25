@@ -3,6 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![D3.js](https://img.shields.io/badge/D3.js-v7-orange)
 ![Status](https://img.shields.io/badge/Status-Done-success)
+![Grade](https://img.shields.io/badge/Grade-20%2F20-success)
 ![License](https://img.shields.io/badge/License-Academic-lightgrey)
 
 > **Sistemas de Visualização de Dados e Conhecimento** | Mestrado em Inteligência Artificial | Universidade do Minho | 2025/26
