@@ -1,46 +1,98 @@
 date,periodo_original,chokepoint,value
+2018-07-01,2018,Bab el-Mandeb,6.4
+2019-07-01,2019,Bab el-Mandeb,6.0
 2020-07-01,2020,Bab el-Mandeb,5.7
 2021-07-01,2021,Bab el-Mandeb,6.0
 2022-07-01,2022,Bab el-Mandeb,8.0
 2023-07-01,2023,Bab el-Mandeb,9.3
 2024-07-01,2024,Bab el-Mandeb,4.1
 2025-04-01,1H2025,Bab el-Mandeb,4.2
+2011-07-01,2011,Cape of Good Hope,4.7
+2012-07-01,2012,Cape of Good Hope,5.4
+2013-07-01,2013,Cape of Good Hope,5.1
+2014-07-01,2014,Cape of Good Hope,4.9
+2015-07-01,2015,Cape of Good Hope,5.1
+2016-07-01,2016,Cape of Good Hope,5.8
+2018-07-01,2018,Cape of Good Hope,7.6
+2019-07-01,2019,Cape of Good Hope,7.5
 2020-07-01,2020,Cape of Good Hope,7.9
 2021-07-01,2021,Cape of Good Hope,7.2
 2022-07-01,2022,Cape of Good Hope,6.1
 2023-07-01,2023,Cape of Good Hope,6.2
 2024-07-01,2024,Cape of Good Hope,9.3
 2025-04-01,1H2025,Cape of Good Hope,9.1
+2011-07-01,2011,Danish Straits,3.0
+2012-07-01,2012,Danish Straits,3.3
+2013-07-01,2013,Danish Straits,3.1
+2014-07-01,2014,Danish Straits,3.0
+2015-07-01,2015,Danish Straits,3.2
+2016-07-01,2016,Danish Straits,3.2
+2018-07-01,2018,Danish Straits,3.3
+2019-07-01,2019,Danish Straits,3.4
 2020-07-01,2020,Danish Straits,3.1
 2021-07-01,2021,Danish Straits,3.1
 2022-07-01,2022,Danish Straits,4.2
 2023-07-01,2023,Danish Straits,5.0
 2024-07-01,2024,Danish Straits,4.9
 2025-04-01,1H2025,Danish Straits,4.9
+2011-07-01,2011,Panama Canal,0.8
+2012-07-01,2012,Panama Canal,0.8
+2013-07-01,2013,Panama Canal,0.8
+2014-07-01,2014,Panama Canal,0.9
+2015-07-01,2015,Panama Canal,1.0
+2016-07-01,2016,Panama Canal,0.9
+2018-07-01,2018,Panama Canal,1.4
+2019-07-01,2019,Panama Canal,1.5
 2020-07-01,2020,Panama Canal,1.7
 2021-07-01,2021,Panama Canal,1.8
 2022-07-01,2022,Panama Canal,2.2
 2023-07-01,2023,Panama Canal,2.2
 2024-07-01,2024,Panama Canal,2.0
 2025-04-01,1H2025,Panama Canal,2.3
+2011-07-01,2011,Strait of Hormuz,17.0
+2012-07-01,2012,Strait of Hormuz,16.8
+2013-07-01,2013,Strait of Hormuz,16.6
+2014-07-01,2014,Strait of Hormuz,16.9
+2015-07-01,2015,Strait of Hormuz,17.0
+2016-07-01,2016,Strait of Hormuz,18.5
+2018-07-01,2018,Strait of Hormuz,21.4
+2019-07-01,2019,Strait of Hormuz,20.0
 2020-07-01,2020,Strait of Hormuz,19.2
 2021-07-01,2021,Strait of Hormuz,19.7
 2022-07-01,2022,Strait of Hormuz,21.9
 2023-07-01,2023,Strait of Hormuz,21.8
 2024-07-01,2024,Strait of Hormuz,20.7
 2025-04-01,1H2025,Strait of Hormuz,20.9
+2011-07-01,2011,Strait of Malacca,14.5
+2012-07-01,2012,Strait of Malacca,15.1
+2013-07-01,2013,Strait of Malacca,15.4
+2014-07-01,2014,Strait of Malacca,15.5
+2015-07-01,2015,Strait of Malacca,15.5
+2016-07-01,2016,Strait of Malacca,16.0
+2018-07-01,2018,Strait of Malacca,23.0
+2019-07-01,2019,Strait of Malacca,23.1
 2020-07-01,2020,Strait of Malacca,22.8
 2021-07-01,2021,Strait of Malacca,22.1
 2022-07-01,2022,Strait of Malacca,23.0
 2023-07-01,2023,Strait of Malacca,24.0
 2024-07-01,2024,Strait of Malacca,22.5
 2025-04-01,1H2025,Strait of Malacca,23.2
+2011-07-01,2011,Suez Canal and SUMED Pipeline,3.8
+2012-07-01,2012,Suez Canal and SUMED Pipeline,4.5
+2013-07-01,2013,Suez Canal and SUMED Pipeline,4.6
+2014-07-01,2014,Suez Canal and SUMED Pipeline,5.2
+2015-07-01,2015,Suez Canal and SUMED Pipeline,5.4
+2016-07-01,2016,Suez Canal and SUMED Pipeline,5.5
+2018-07-01,2018,Suez Canal and SUMED Pipeline,6.4
+2019-07-01,2019,Suez Canal and SUMED Pipeline,6.2
 2020-07-01,2020,Suez Canal and SUMED Pipeline,5.4
 2021-07-01,2021,Suez Canal and SUMED Pipeline,5.2
 2022-07-01,2022,Suez Canal and SUMED Pipeline,7.3
 2023-07-01,2023,Suez Canal and SUMED Pipeline,8.8
 2024-07-01,2024,Suez Canal and SUMED Pipeline,4.8
 2025-04-01,1H2025,Suez Canal and SUMED Pipeline,4.9
+2018-07-01,2018,Turkish Straits (Dardanelles),3.4
+2019-07-01,2019,Turkish Straits (Dardanelles),3.5
 2020-07-01,2020,Turkish Straits (Dardanelles),3.2
 2021-07-01,2021,Turkish Straits (Dardanelles),3.3
 2022-07-01,2022,Turkish Straits (Dardanelles),3.2
